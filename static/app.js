@@ -153,6 +153,7 @@
     $("#plan-date").value = state.settings.plan_date || "";
     $("#total-flow").value = state.settings.total_flow;
     $("#status-meta").dataset.revision = state.revision;
+    if (window.VerifyView) window.VerifyView.setPlanDate(state.settings.plan_date);
   }
 
   async function saveSettings(patch) {
@@ -1101,8 +1102,29 @@
 
   // ------------------------------------------------------------ 启动
 
+  // 计划编排 / 执行核验 视图切换
+  function switchView(name) {
+    const planView = document.querySelector(".layout");
+    const verifyView = $("#verify-view");
+    const tabPlan = $("#vtab-plan");
+    const tabVerify = $("#vtab-verify");
+    const isVerify = name === "verify";
+    planView.classList.toggle("hidden", isVerify);
+    verifyView.classList.toggle("hidden", !isVerify);
+    tabPlan.classList.toggle("active", !isVerify);
+    tabVerify.classList.toggle("active", isVerify);
+    if (isVerify && window.VerifyView) {
+      window.VerifyView.load().catch((e) => toast(e.message, true));
+    }
+  }
+
   bindForms();
   bindActions();
   bindMerge();
+  if (window.VerifyView) {
+    window.VerifyView.bind();
+    $("#vtab-plan").addEventListener("click", () => switchView("plan"));
+    $("#vtab-verify").addEventListener("click", () => switchView("verify"));
+  }
   refresh().catch((e) => toast(e.message, true));
 })();

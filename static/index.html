@@ -96,6 +96,90 @@
 
   <!-- 右侧：时间轴 -->
   <section class="main-panel">
+    <div class="view-switch" id="view-switch" role="tablist">
+      <button type="button" class="vtab active" id="vtab-plan" role="tab">📅 计划编排</button>
+      <button type="button" class="vtab" id="vtab-verify" role="tab">✅ 执行核验</button>
+    </div>
+
+    <!-- 执行核验视图 -->
+    <div class="verify-view hidden" id="verify-view">
+      <div class="verify-toolbar card">
+        <label>核验批次
+          <select id="verify-batch-select"></select>
+        </label>
+        <button class="btn small ghost" id="btn-verify-new" type="button">➕ 新建批次</button>
+        <button class="btn small ghost" id="btn-verify-save" type="button" title="批次与事件导入时已保存到 SQLite；导出 JSON 留档复核">💾 保存批次 / 导出 JSON</button>
+        <button class="btn small ghost danger-solid" id="btn-verify-delete-batch" type="button">删除批次</button>
+        <span class="verify-meta" id="verify-batch-meta"></span>
+      </div>
+
+      <div class="card verify-import">
+        <h2>导入阀门运行事件
+          <small>每行一条：event_id,阀门(名称或ID),开始 HH:MM,结束 HH:MM,实际流量 L/min；按开始时间递增</small>
+        </h2>
+        <textarea id="verify-import-text" rows="4"
+          placeholder="RUN-100,北侧干管,08:00,09:30,25&#10;RUN-101,中部干管,08:00,08:30,22"></textarea>
+        <div class="verify-import-actions">
+          <button class="btn small primary" id="btn-verify-import" type="button">导入并核验</button>
+          <span class="hint">同编号同内容幂等；同编号内容冲突或时间非递增将整批拒绝；允许中断（分段事件）。</span>
+        </div>
+      </div>
+
+      <div class="status-bar" id="verify-status-bar">
+        <span id="verify-status-text">尚未选择批次</span>
+        <span class="status-meta" id="verify-status-meta"></span>
+      </div>
+      <div class="plan-change-banner hidden" id="plan-change-banner"></div>
+      <div class="issues-panel hidden" id="verify-conflict-panel">
+        <h3>⚠ 实际运行冲突 / 越界</h3>
+        <ul id="verify-conflict-list"></ul>
+      </div>
+
+      <div class="card">
+        <h2>分区核验台账
+          <small>半开区间逐段对齐；证据不足不重复计量</small>
+        </h2>
+        <div class="table-wrap">
+          <table class="verify-table" id="verify-zone-table">
+            <thead>
+              <tr>
+                <th>分区 / 阀门</th><th>计划时段</th><th>结论</th>
+                <th>计划水量</th><th>已灌</th><th>缺口</th><th>超量</th>
+                <th>提前(分)</th><th>延后(分)</th><th>越界(分)</th><th>中断(分)</th><th>补灌建议</th>
+              </tr>
+            </thead>
+            <tbody id="verify-zone-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="verify-lower">
+        <div class="card">
+          <h2>证据不足小段<small>无法唯一归属，未计入任何分区</small></h2>
+          <ul class="mini-list" id="verify-ambiguous-list"></ul>
+        </div>
+        <div class="card">
+          <h2>无计划运行<small>不归属任何分区</small></h2>
+          <ul class="mini-list" id="verify-unplanned-list"></ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>批次事件
+          <small>删除后自动全量重算</small>
+        </h2>
+        <div class="table-wrap">
+          <table class="verify-table" id="verify-event-table">
+            <thead>
+              <tr><th>event_id</th><th>阀门</th><th>开始</th><th>结束</th>
+              <th>时长(分)</th><th>实际流量</th><th></th></tr>
+            </thead>
+            <tbody id="verify-event-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <div class="draft-banner hidden" id="draft-banner">
       <span class="draft-text">📝 本地草稿：该计划基于修订 <b id="draft-base-rev"></b>，
         服务器已到修订 <b id="draft-server-rev"></b>。页面保留你的改动，请逐项复核差异后再提交。</span>
@@ -175,6 +259,7 @@
     </div>
   </div>
 </div>
+<script src="/verify.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

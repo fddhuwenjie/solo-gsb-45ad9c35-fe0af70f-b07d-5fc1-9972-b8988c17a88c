@@ -14,6 +14,7 @@ import disease_trace as dt
 import crop_heat as ch
 import drip_uniform as dri
 import fertilizer_split as fz
+import execution_check as ec
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "data", "irrigation.db"))
@@ -222,6 +223,32 @@ def init_db():
         );
         CREATE UNIQUE INDEX IF NOT EXISTS idx_fertilizer_pairs_pair
             ON fertilizer_pairs(recipe_id, a_id, b_id);
+        CREATE TABLE IF NOT EXISTS verify_batches (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+            plan_date     TEXT NOT NULL,
+            note          TEXT NOT NULL DEFAULT '',
+            -- 建批时的计划修订：计划日后变动时核验结果按最新计划全量重算，
+            -- 同时在页面提示该批次的计划基线已变化
+            base_revision INTEGER NOT NULL DEFAULT 1,
+            created       TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_verify_batches_date
+            ON verify_batches(plan_date, id);
+        CREATE TABLE IF NOT EXISTS verify_events (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id   INTEGER NOT NULL REFERENCES verify_batches(id) ON DELETE CASCADE,
+            event_id   TEXT NOT NULL,
+            valve_id   INTEGER,
+            valve_name TEXT NOT NULL DEFAULT '',
+            start_ts   TEXT NOT NULL,
+            end_ts     TEXT NOT NULL,
+            flow_lmin  REAL NOT NULL,
+            created    TEXT NOT NULL,
+            UNIQUE (batch_id, event_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_verify_events_batch_start
+            ON verify_events(batch_id, start_ts);
         """
     )
     _migrate_db(db)
@@ -246,6 +273,8 @@ def init_db():
         _seed_drip(db)
     if db.execute("SELECT COUNT(*) FROM fertilizer_recipes").fetchone()[0] == 0:
         _seed_fertilizer(db)
+    if db.execute("SELECT COUNT(*) FROM verify_batches").fetchone()[0] == 0:
+        _seed_verify(db)
     db.close()
 
 
@@ -730,6 +759,64 @@ def _seed_fertilizer(db):
     db.commit()
 
 
+# ---------------------------------------------------------------- 执行核验示例数据
+
+def _seed_verify(db):
+    """一个执行核验示例批次：覆盖核验的各类典型结论。
+
+    基于内置当日计划（总流量 60 L/min，07:30–08:00 停水）：
+      草莓区 05:30–06:30、番茄区 08:00–10:00、叶菜区 08:00–08:30、
+      育苗区 08:00–08:45、黄瓜区 18:00–19:30。
+
+    - 番茄区：08:00 准点开阀但 09:30 中断（缺 750 L）；补灌建议落在
+      原计划之前窗口内的 06:00–06:30；
+    - 草莓区：05:30 两路中部干管事件重叠半小时（阀门并发冲突 + 证据不足，
+      该半小时不重复计量），主路继续灌到 06:30 -> 实际归属 750 L、缺 750 L，
+      建议 06:30–07:00 补灌；
+    - 育苗区：08:00–08:30 只开了半小时（缺 150 L），而窗口剩余槽与
+      叶菜区 / 番茄区的原计划及实际运行撞在同一阀门 / 总流量上 -> 无可行
+      补灌槽，给出最小缺口与逐约束原因；
+    - 叶菜区：08:00–08:30 实跑流量 40 L/min（足量 1200 L，超量），
+      与番茄区 08:00–08:30 叠加使实际总流量 65 > 60 -> 总流量冲突；
+    - 黄瓜区：18:00–19:40 且流量偏大（33 L/min）-> 延后关阀 10 分钟，
+      实际 3300 L（需 2250 L）判超量；
+    - 12:00 一路中部干管运行 15 分钟 -> 无计划运行（不计入任何分区）。
+    """
+    plan_date = db.execute(
+        "SELECT value FROM settings WHERE key='plan_date'").fetchone()[0]
+    revision = get_plan_revision(db)
+    now = datetime.now().replace(microsecond=0).isoformat()
+    cur = db.execute(
+        "INSERT INTO verify_batches(name,plan_date,note,base_revision,created)"
+        " VALUES(?,?,?,?,?)",
+        ("当日运行核验（示例）", plan_date,
+         "内置示例：中断缺水 / 证据不足 / 延后关阀 / 并发与总流量冲突 / 补灌无解",
+         revision, now))
+    batch_id = cur.lastrowid
+    valve = {r["name"]: r["id"] for r in db.execute("SELECT id,name FROM valves")}
+
+    def stamp(hhmm):
+        return f"{plan_date}T{hhmm}:00"
+
+    # event_id, 阀门名, 开始, 结束, 实际流量 L/min（开始时间严格递增）
+    rows = [
+        ("RUN-001", "中部干管", "05:30", "06:30", 25),  # 草莓区主路（后半足量）
+        ("RUN-002", "中部干管", "05:30", "06:00", 25),  # 与主路并发 -> 证据不足
+        ("RUN-003", "苗床支管", "08:00", "08:30", 10),  # 育苗区：只灌半小时
+        ("RUN-004", "北侧干管", "08:00", "09:30", 25),  # 番茄区：09:30 中断
+        ("RUN-005", "中部干管", "08:00", "08:30", 40),  # 叶菜区超量；总流量 65 冲突
+        ("RUN-006", "中部干管", "12:00", "12:15", 25),  # 无计划运行
+        ("RUN-007", "中部干管", "18:00", "19:40", 33),  # 黄瓜区：超量、延后关阀
+    ]
+    for eid, vname, start, end, flow in rows:
+        db.execute(
+            "INSERT INTO verify_events(batch_id,event_id,valve_id,valve_name,"
+            "start_ts,end_ts,flow_lmin,created) VALUES(?,?,?,?,?,?,?,?)",
+            (batch_id, eid, valve.get(vname), vname,
+             stamp(start), stamp(end), flow, now))
+    db.commit()
+
+
 # ---------------------------------------------------------------- 序列化
 
 def valve_dict(row):
@@ -1065,6 +1152,7 @@ def api_reset():
         "DELETE FROM drip_samples; DELETE FROM drip_zones; DELETE FROM drip_rounds; "
         "DELETE FROM fertilizer_pairs; DELETE FROM fertilizer_items; "
         "DELETE FROM fertilizer_recipes; "
+        "DELETE FROM verify_events; DELETE FROM verify_batches; "
         "DELETE FROM heat_readings; DELETE FROM heat_batches; "
         "DELETE FROM schedule_items; "
         # 全量重置轮灌对象：病害 / 水质历史保留，仅解除事件对旧分区的外键引用
@@ -1087,6 +1175,7 @@ def api_reset():
             _seed_drip(db)
         if db.execute("SELECT COUNT(*) FROM fertilizer_recipes").fetchone()[0] == 0:
             _seed_fertilizer(db)
+        _seed_verify(db)
     else:
         db.execute("UPDATE settings SET value='100' WHERE key='total_flow'")
         db.commit()
@@ -3087,6 +3176,339 @@ def api_fertilizer_delete_pair(pair_id):
     db.execute("DELETE FROM fertilizer_pairs WHERE id=?", (pair_id,))
     db.commit()
     return jsonify(build_fertilizer_state(row["recipe_id"]))
+
+
+# ---------------------------------------------------------------- 执行核验
+
+def _verify_event_dict(row):
+    return {
+        "id": row["id"],
+        "event_id": row["event_id"],
+        "valve_id": row["valve_id"],
+        "valve_name": row["valve_name"],
+        "start": row["start_ts"][11:16],
+        "end": row["end_ts"][11:16],
+        "start_ts": row["start_ts"],
+        "end_ts": row["end_ts"],
+        "flow_lmin": row["flow_lmin"],
+    }
+
+
+def _verify_batch_row(db, row):
+    """组装单个核验批次：事件 + 按最新计划全量重算的核验结果。"""
+    plan_date = row["plan_date"]
+    try:
+        day = date.fromisoformat(plan_date)
+    except ValueError:
+        day = date.today()
+
+    event_rows = db.execute(
+        "SELECT * FROM verify_events WHERE batch_id=? ORDER BY start_ts,id",
+        (row["id"],)).fetchall()
+    events = []
+    orphan_events = []
+    for er in event_rows:
+        if er["valve_id"] is None:
+            # 阀门已被删除（ON DELETE SET NULL）：无法参与核验，单列提示，
+            # 事件本身保留在批次台账中，待操作员处理
+            orphan_events.append(_verify_event_dict(er))
+            continue
+        try:
+            events.append({
+                "event_id": er["event_id"],
+                "valve_id": er["valve_id"],
+                "start": datetime.fromisoformat(er["start_ts"]),
+                "end": datetime.fromisoformat(er["end_ts"]),
+                "flow_lmin": er["flow_lmin"],
+            })
+        except ValueError:
+            continue
+
+    # 始终按当前最新计划 / 约束全量重算（补录 / 删除事件或计划变动后一致）
+    state = build_state()
+    result = ec.verify(
+        state["zones"], state["valves"], state["blackouts"], state["items"],
+        events, state["settings"]["total_flow"], day)
+    result["orphan_events"] = orphan_events
+
+    current_revision = state["revision"]
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "plan_date": plan_date,
+        "note": row["note"],
+        "base_revision": row["base_revision"],
+        "current_revision": current_revision,
+        "plan_changed": current_revision != row["base_revision"],
+        "created": row["created"],
+        "events": [_verify_event_dict(er) for er in event_rows],
+        "orphan_events": orphan_events,
+        "result": result,
+    }
+
+
+def build_verify_state(batch_id=None, day=None):
+    db = get_db()
+    where, params = "", []
+    if batch_id is not None:
+        where, params = " WHERE id=?", [batch_id]
+    elif day is not None:
+        where, params = " WHERE plan_date=?", [day.isoformat()]
+    rows = db.execute(
+        f"SELECT * FROM verify_batches{where} ORDER BY plan_date DESC, id",
+        params).fetchall()
+    batches = [_verify_batch_row(db, r) for r in rows]
+    return {
+        "plan_dates": [r["plan_date"] for r in db.execute(
+            "SELECT DISTINCT plan_date FROM verify_batches ORDER BY plan_date DESC")],
+        "batches": batches,
+        "batch": batches[0] if batches else None,
+    }
+
+
+def _build_verify_payload(db, batch_id):
+    """导出 / 单批接口使用的完整批次数据（含最新计划快照）。"""
+    row = db.execute("SELECT * FROM verify_batches WHERE id=?",
+                     (batch_id,)).fetchone()
+    if row is None:
+        return None
+    batch = _verify_batch_row(db, row)
+    state = build_state()
+    return {
+        "batch": {k: batch[k] for k in
+                  ("id", "name", "plan_date", "note", "base_revision",
+                   "current_revision", "plan_changed", "created")},
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "slot_minutes": scheduler.SLOT_MIN,
+        "plan": {
+            "revision": state["revision"],
+            "total_flow_limit_lmin": state["settings"]["total_flow"],
+            "blackouts": [{"name": b["name"], "start": b["start"], "end": b["end"]}
+                          for b in state["blackouts"]],
+        },
+        "events": batch["events"],
+        "verification": batch["result"],
+    }
+
+
+def _parse_verify_event_payload(db, data, idx, plan_date, valve_ids):
+    """校验并解析单条导入事件，返回待插入元组。整批任一非法由调用方整体拒绝。"""
+    prefix = f"第 {idx + 1} 条事件（event_id={data.get('event_id', '?')}）"
+    eid = data.get("event_id")
+    if not isinstance(eid, str) or not eid.strip():
+        raise ValueError(f"{prefix}：event_id 必须为非空字符串")
+    eid = eid.strip()
+    if len(eid) > 64:
+        raise ValueError(f"{prefix}：event_id 长度不能超过 64")
+
+    vid = data.get("valve_id")
+    vname = data.get("valve_name")
+    if vid in (None, "") and isinstance(vname, str) and vname.strip():
+        row = db.execute("SELECT id FROM valves WHERE name=?",
+                         (vname.strip(),)).fetchone()
+        if row is None:
+            raise ValueError(f"{prefix}：阀门「{vname.strip()}」不存在")
+        vid = row["id"]
+    if not isinstance(vid, int) or isinstance(vid, bool):
+        raise ValueError(f"{prefix}：valve_id 必须为整数（或提供存在的 valve_name）")
+    if vid not in valve_ids:
+        raise ValueError(f"{prefix}：阀门 id={vid} 不存在")
+    vrow = db.execute("SELECT name FROM valves WHERE id=?", (vid,)).fetchone()
+    vname = vrow["name"] if vrow else (vname or "")
+
+    try:
+        start = ec.parse_event_dt(data.get("start"), date.fromisoformat(plan_date),
+                                  "start")
+        end = ec.parse_event_dt(data.get("end"), date.fromisoformat(plan_date), "end")
+    except ValueError:
+        raise
+    if end <= start:
+        raise ValueError(f"{prefix}：结束时间必须晚于开始时间")
+    flow = data.get("flow_lmin")
+    try:
+        flow = float(flow)
+    except (TypeError, ValueError):
+        raise ValueError(f"{prefix}：实际流量必须为数字")
+    if not (flow > 0) or flow != flow:
+        raise ValueError(f"{prefix}：实际流量必须大于 0")
+    return (eid, vid, vname, start, end, flow)
+
+
+@app.get("/api/verify/batches")
+def api_verify_state():
+    batch_id = request.args.get("batch_id", type=int)
+    day = request.args.get("date")
+    day_obj = None
+    if day:
+        try:
+            day_obj = wt.parse_day(day)
+        except ValueError as e:
+            return bad(str(e))
+    return jsonify(build_verify_state(batch_id, day_obj))
+
+
+@app.post("/api/verify/batches")
+def api_verify_create_batch():
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    name = str(data.get("name") or "").strip() or "执行核验批次"
+    raw_day = data.get("plan_date")
+    try:
+        day = wt.parse_day(raw_day) if raw_day else date.today()
+    except ValueError as e:
+        return bad(str(e))
+    note = str(data.get("note") or "").strip()
+    now = datetime.now().replace(microsecond=0).isoformat()
+    cur = db.execute(
+        "INSERT INTO verify_batches(name,plan_date,note,base_revision,created)"
+        " VALUES(?,?,?,?,?)",
+        (name, day.isoformat(), note, get_plan_revision(db), now))
+    db.commit()
+    return jsonify(build_verify_state(cur.lastrowid)), 201
+
+
+@app.put("/api/verify/batches/<int:batch_id>")
+def api_verify_update_batch(batch_id):
+    data = request.get_json(silent=True) or {}
+    db = get_db()
+    row = db.execute("SELECT * FROM verify_batches WHERE id=?",
+                     (batch_id,)).fetchone()
+    if row is None:
+        return bad("核验批次不存在", 404)
+    name = str(data.get("name") or "").strip()
+    note = data.get("note")
+    if name:
+        db.execute("UPDATE verify_batches SET name=? WHERE id=?", (name, batch_id))
+    if note is not None:
+        db.execute("UPDATE verify_batches SET note=? WHERE id=?",
+                   (str(note).strip(), batch_id))
+    db.commit()
+    return jsonify(build_verify_state(batch_id))
+
+
+@app.delete("/api/verify/batches/<int:batch_id>")
+def api_verify_delete_batch(batch_id):
+    db = get_db()
+    row = db.execute("SELECT plan_date FROM verify_batches WHERE id=?",
+                     (batch_id,)).fetchone()
+    if row is None:
+        return bad("核验批次不存在", 404)
+    db.execute("DELETE FROM verify_batches WHERE id=?", (batch_id,))
+    db.commit()
+    return jsonify(build_verify_state(day=date.fromisoformat(row["plan_date"])))
+
+
+@app.post("/api/verify/batches/<int:batch_id>/events")
+def api_verify_import_events(batch_id):
+    """按计划日期导入按时间递增的阀门运行事件。
+
+    - 同 event_id 同内容 -> 幂等跳过；同 event_id 内容冲突 -> 整批拒绝（409）；
+    - 批内 event_id 重复且内容不一致、时间非递增、字段非法 -> 整批拒绝（400）；
+    - 全部校验通过后单事务写入，随后按最新计划全量重算返回。
+    """
+    data = request.get_json(silent=True) or {}
+    raw_events = data.get("events")
+    if not isinstance(raw_events, list) or not raw_events:
+        return bad("events 必须为非空数组")
+    db = get_db()
+    brow = db.execute("SELECT * FROM verify_batches WHERE id=?",
+                      (batch_id,)).fetchone()
+    if brow is None:
+        return bad("核验批次不存在", 404)
+    plan_date = brow["plan_date"]
+    valve_ids = {r["id"] for r in db.execute("SELECT id FROM valves")}
+
+    parsed = []
+    try:
+        for i, ev in enumerate(raw_events):
+            if not isinstance(ev, dict):
+                raise ValueError(f"第 {i + 1} 条事件：必须为对象")
+            parsed.append(_parse_verify_event_payload(
+                db, ev, i, plan_date, valve_ids))
+    except ValueError as e:
+        return bad(str(e))
+
+    # 批内按开始时间非递减（允许并列）；同 event_id 内容必须一致
+    for i in range(1, len(parsed)):
+        if parsed[i][3] < parsed[i - 1][3]:
+            return bad(
+                f"第 {i + 1} 条事件开始时间早于前一条：事件必须按开始时间递增导入")
+    within = {}
+    for tup in parsed:
+        eid = tup[0]
+        if eid in within and within[eid] != tup:
+            return bad(f"批内 event_id={eid} 重复且内容不一致，整批拒绝")
+        within.setdefault(eid, tup)
+
+    existing = {r["event_id"]: r
+                for r in db.execute("SELECT * FROM verify_events WHERE batch_id=?",
+                                    (batch_id,))}
+    inserted, skipped = [], []
+    for eid, vid, vname, start, end, flow in parsed:
+        old = existing.get(eid)
+        if old is not None:
+            same = (old["valve_id"] == vid and
+                    old["start_ts"] == start.isoformat() and
+                    old["end_ts"] == end.isoformat() and
+                    abs(float(old["flow_lmin"]) - flow) < 1e-9)
+            if same:
+                skipped.append(eid)
+                continue
+            payload = build_verify_state(batch_id)
+            payload.update({
+                "error": f"event_id={eid} 已存在但内容不同（编号冲突），整批拒绝、未写入任何事件",
+                "conflict": "event_content",
+                "event_id": eid,
+            })
+            return jsonify(payload), 409
+        inserted.append((eid, vid, vname, start, end, flow))
+
+    now = datetime.now().replace(microsecond=0).isoformat()
+    try:
+        with db:
+            for eid, vid, vname, start, end, flow in inserted:
+                db.execute(
+                    "INSERT INTO verify_events(batch_id,event_id,valve_id,valve_name,"
+                    "start_ts,end_ts,flow_lmin,created) VALUES(?,?,?,?,?,?,?,?)",
+                    (batch_id, eid, vid, vname, start.isoformat(),
+                     end.isoformat(), flow, now))
+    except sqlite3.IntegrityError:
+        return bad("event_id 重复写入冲突，整批未生效")
+
+    payload = build_verify_state(batch_id)
+    payload["imported"] = len(inserted)
+    payload["skipped"] = len(skipped)
+    return jsonify(payload), 201 if inserted else 200
+
+
+@app.delete("/api/verify/batches/<int:batch_id>/events/<event_id>")
+def api_verify_delete_event(batch_id, event_id):
+    """删除单条事件（按业务 event_id）；删除后全量重算。"""
+    db = get_db()
+    if not db.execute("SELECT 1 FROM verify_batches WHERE id=?",
+                      (batch_id,)).fetchone():
+        return bad("核验批次不存在", 404)
+    cur = db.execute(
+        "DELETE FROM verify_events WHERE batch_id=? AND event_id=?",
+        (batch_id, event_id))
+    db.commit()
+    if cur.rowcount == 0:
+        return bad(f"批次内不存在 event_id={event_id}", 404)
+    return jsonify(build_verify_state(batch_id))
+
+
+@app.get("/api/verify/batches/<int:batch_id>/export")
+def api_verify_export(batch_id):
+    db = get_db()
+    payload = _build_verify_payload(db, batch_id)
+    if payload is None:
+        return bad("核验批次不存在", 404)
+    body = json.dumps(payload, ensure_ascii=False, indent=2)
+    fname = f"execution-verify-{payload['batch']['plan_date']}-{batch_id}.json"
+    resp = Response(body, mimetype="application/json; charset=utf-8")
+    resp.headers["Content-Disposition"] = \
+        f"attachment; filename=execution-verify.json; filename*=UTF-8''{fname}"
+    return resp
 
 
 # ---------------------------------------------------------------- 错误
