@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灌溉水质连续监测</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/water.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🧪</span>
+    <div>
+      <h1>灌溉水质连续监测</h1>
+      <p class="subtitle">pH / EC / 浊度 / 硝酸盐 · 连续两次越界判超标，连续两次回归判恢复</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <nav class="page-tabs">
+      <a class="btn" href="/">💧 轮灌编排台</a>
+      <a class="btn primary" href="/water">🧪 水质监测</a>
+      <a class="btn" href="/disease">🔬 病害追踪</a>
+      <a class="btn" href="/heat">🌡️ 积温预测</a>
+      <a class="btn" href="/drip">💧 滴灌巡检</a>
+      <a class="btn" href="/fertilizer">⚗️ 母液分罐</a>
+    </nav>
+    <button class="btn" id="btn-export">⬇ 导出 JSON</button>
+  </div>
+</header>
+
+<main class="water-layout">
+  <!-- 左侧：水源 + 录入 + 区间配置 -->
+  <aside class="sidebar">
+    <section class="card">
+      <h2>水源</h2>
+      <ul class="entity-list" id="source-list"></ul>
+      <form class="inline-form" id="source-form">
+        <input type="text" name="name" placeholder="水源名称（如：2# 机井）" required>
+        <button class="btn small" type="submit">添加</button>
+      </form>
+      <form class="zone-form" id="source-meta-form">
+        <input type="hidden" name="id">
+        <label>备注
+          <input type="text" name="note" placeholder="水源位置 / 说明">
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">保存备注</button>
+          <button class="btn small danger-solid" type="button" id="btn-source-delete">删除水源</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>阀门水源绑定 <small>回溯按绑定水源核算</small></h2>
+      <ul class="entity-list" id="valve-bind-list"></ul>
+      <p class="form-hint">每个阀门绑定一个水源；改绑后用水回溯立即按新水源重新核算，原计划不变。未绑定的阀门其灌溉时段标记为证据不足。</p>
+    </section>
+
+    <section class="card">
+      <h2>采样录入 <small>四项必填 · 单位固定 · 批量按时间递增</small></h2>
+      <form class="zone-form" id="sample-form">
+        <label>采样时间
+          <input type="datetime-local" name="ts" step="1" required>
+        </label>
+        <div class="metric-grid">
+          <label>pH <small>（无量纲）</small>
+            <input type="number" name="ph" step="0.01" min="0" max="14" required>
+          </label>
+          <label>EC <small>mS/cm</small>
+            <input type="number" name="ec" step="0.01" min="0" required>
+          </label>
+          <label>浊度 <small>NTU</small>
+            <input type="number" name="turbidity" step="0.1" min="0" required>
+          </label>
+          <label>硝酸盐 <small>mg/L</small>
+            <input type="number" name="nitrate" step="0.1" min="0" required>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">提交采样</button>
+          <button class="btn small ghost" type="button" id="btn-now">填入当前时间</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>正常区间配置 <small id="range-source-name"></small></h2>
+      <form class="zone-form" id="range-form">
+        <div class="range-row"><span>指标</span><span>下限</span><span>上限</span><span>单位</span></div>
+        <div class="range-row" data-metric="ph">
+          <span>pH</span>
+          <input type="number" name="ph_low" step="0.01" min="0" max="14">
+          <input type="number" name="ph_high" step="0.01" min="0" max="14">
+          <em>—</em>
+        </div>
+        <div class="range-row" data-metric="ec">
+          <span>EC</span>
+          <input type="number" name="ec_low" step="0.01" min="0">
+          <input type="number" name="ec_high" step="0.01" min="0">
+          <em>mS/cm</em>
+        </div>
+        <div class="range-row" data-metric="turbidity">
+          <span>浊度</span>
+          <input type="number" name="turbidity_low" step="0.1" min="0">
+          <input type="number" name="turbidity_high" step="0.1" min="0">
+          <em>NTU</em>
+        </div>
+        <div class="range-row" data-metric="nitrate">
+          <span>硝酸盐</span>
+          <input type="number" name="nitrate_low" step="0.1" min="0">
+          <input type="number" name="nitrate_high" step="0.1" min="0">
+          <em>mg/L</em>
+        </div>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">保存区间并重算</button>
+        </div>
+        <p class="form-hint">区间保存后，系统按时间顺序对该水源全部历史采样重新判定状态。</p>
+      </form>
+    </section>
+  </aside>
+
+  <!-- 右侧：总览 + 趋势 + 明细 -->
+  <section class="main-panel">
+    <div class="card water-overview">
+      <div class="overview-head">
+        <div class="overall" id="overall-box">
+          <span class="overall-label">水源总览</span>
+          <span class="overall-badge" id="overall-badge">—</span>
+        </div>
+        <div class="filters">
+          <label>水源
+            <select id="filter-source"></select>
+          </label>
+          <label>日期筛选
+            <input type="date" id="filter-date">
+          </label>
+          <button class="btn small ghost" id="btn-filter-apply">应用</button>
+          <button class="btn small ghost" id="btn-filter-clear">最近 50 条</button>
+        </div>
+      </div>
+      <ul class="source-summary" id="source-summary"></ul>
+    </div>
+
+    <div class="card trace-card">
+      <div class="trace-head">
+        <h2>用水回溯 <small>按计划日期 · 15 分钟灌溉时段 × 水源半开状态区间</small></h2>
+        <div class="filters">
+          <label>计划日期
+            <input type="date" id="trace-date">
+          </label>
+          <label>分区筛选
+            <select id="trace-zone"></select>
+          </label>
+          <button class="btn small ghost" id="btn-trace-apply">核算</button>
+          <button class="btn small ghost" id="btn-trace-clear">全部分区</button>
+          <button class="btn small" id="btn-trace-export">⬇ 导出回溯 JSON</button>
+        </div>
+      </div>
+      <div class="trace-summary" id="trace-summary"></div>
+      <div class="table-wrap">
+        <table class="trace-table">
+          <thead>
+            <tr>
+              <th>分区</th><th>灌溉时段</th><th>阀门 / 水源</th><th>结论</th>
+              <th>风险水量 (L)</th><th>待复核 (L)</th><th>触发指标</th><th>状态来源</th>
+            </tr>
+          </thead>
+          <tbody id="trace-rows"></tbody>
+        </table>
+      </div>
+      <p class="form-hint" id="trace-hint">
+        采样时刻起采用新状态；当日首条采样前沿用最近历史采样，无历史样本标为证据不足。
+        超标 / 观察区间分别计为风险 / 待复核，水量 = 阀门流量 × 重叠分钟。
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>最近采样趋势 <small id="trend-subtitle"></small></h2>
+      <div id="charts" class="charts"></div>
+    </div>
+
+    <div class="card">
+      <h2>采样明细 <small id="detail-subtitle"></small></h2>
+      <div class="table-wrap">
+        <table class="sample-table">
+          <thead>
+            <tr>
+              <th>时间</th><th>状态</th><th>触发指标</th>
+              <th>pH</th><th>EC (mS/cm)</th><th>浊度 (NTU)</th><th>硝酸盐 (mg/L)</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="sample-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/water.js"></script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>病害接触追踪</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/water.css">
+<link rel="stylesheet" href="/disease.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🔬</span>
+    <div>
+      <h1>病害接触追踪</h1>
+      <p class="subtitle">确诊 / 到访 / 合格消毒按时间重放 · 潜伏时长可配置 · 最早暴露 + 最短事件链</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <nav class="page-tabs">
+      <a class="btn" href="/">💧 轮灌编排台</a>
+      <a class="btn" href="/water">🧪 水质监测</a>
+      <a class="btn primary" href="/disease">🔬 病害追踪</a>
+      <a class="btn" href="/heat">🌡️ 积温预测</a>
+      <a class="btn" href="/drip">💧 滴灌巡检</a>
+      <a class="btn" href="/fertilizer">⚗️ 母液分罐</a>
+    </nav>
+    <button class="btn" id="btn-export">⬇ 导出 JSON</button>
+  </div>
+</header>
+
+<main class="water-layout disease-layout">
+  <!-- 左侧：案件 + 工具 + 事件录入 -->
+  <aside class="sidebar">
+    <section class="card">
+      <h2>案件 <small>同一种病害的一次确诊调查</small></h2>
+      <ul class="entity-list" id="case-list"></ul>
+      <form class="zone-form" id="case-form">
+        <input type="hidden" name="id">
+        <label>病害名称
+          <input type="text" name="disease_name" placeholder="如：灰霉病 / 白粉病" required>
+        </label>
+        <label>潜伏时长（小时）<small>暴露分区经过此时长后才可继续污染工具；0 = 立即传染</small>
+          <input type="number" name="latency_hours" min="0" step="0.5" value="24" required>
+        </label>
+        <label>备注
+          <input type="text" name="note" placeholder="案件说明（可空）">
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit" id="case-submit">新建案件</button>
+          <button class="btn small hidden" type="button" id="case-cancel">取消编辑</button>
+        </div>
+      </form>
+      <div class="case-ops" id="case-ops">
+        <button class="btn small ghost" id="btn-case-freeze">🔒 确认并冻结案件快照</button>
+        <button class="btn small danger-solid" id="btn-case-delete">删除案件</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>可复用工具 <small>跨分区共用的剪具 / 筐 / 托盘</small></h2>
+      <ul class="entity-list" id="tool-list"></ul>
+      <form class="inline-form tool-form" id="tool-form">
+        <input type="text" name="name" placeholder="工具名称（如：修枝剪 A）" required>
+        <input type="text" name="note" placeholder="备注" class="tool-note">
+        <button class="btn small" type="submit">添加</button>
+      </form>
+    </section>
+
+    <section class="card" id="event-card">
+      <h2>事件登记 <small id="event-card-sub">按确诊 / 到访 / 消毒顺序重放</small></h2>
+      <form class="zone-form" id="event-form">
+        <input type="hidden" name="id">
+        <label>事件类型
+          <select name="type" id="event-type">
+            <option value="diagnosis">确诊（分区确诊为污染源头）</option>
+            <option value="visit">到访（工具进入分区）</option>
+            <option value="disinfection">消毒（工具完成消毒）</option>
+          </select>
+        </label>
+        <label>时间（本地时间）
+          <input type="datetime-local" name="ts" step="1" required>
+        </label>
+        <label class="field-tool">工具
+          <select name="tool_id" id="event-tool"></select>
+        </label>
+        <label class="field-zone">分区
+          <select name="zone_id" id="event-zone"></select>
+        </label>
+        <label class="field-qualified hidden">
+          <span><input type="checkbox" name="qualified"> 消毒合格（合格才截断传播，不合格不截断）</span>
+        </label>
+        <label>备注
+          <input type="text" name="note" placeholder="事件说明（可空）">
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit" id="event-submit">登记事件</button>
+          <button class="btn small hidden" type="button" id="event-cancel">取消编辑</button>
+          <button class="btn small ghost" type="button" id="btn-event-now">填入当前时间</button>
+        </div>
+      </form>
+      <p class="form-hint">同一时刻按「确诊 → 到访 → 消毒」处理；补录或删除事件后自动重算。</p>
+    </section>
+  </aside>
+
+  <!-- 右侧：筛选 + 结果 -->
+  <section class="main-panel">
+    <div class="card disease-overview">
+      <div class="overview-head">
+        <div class="overall">
+          <span class="overall-label" id="case-title">未选择案件</span>
+          <span class="case-badge" id="case-badge"></span>
+        </div>
+        <div class="filters">
+          <label>事件类型
+            <select id="filter-type">
+              <option value="">全部</option>
+              <option value="diagnosis">确诊</option>
+              <option value="visit">到访</option>
+              <option value="disinfection">消毒</option>
+            </select>
+          </label>
+          <label>工具
+            <select id="filter-tool"></select>
+          </label>
+          <label>分区
+            <select id="filter-zone"></select>
+          </label>
+          <label class="check-line"><input type="checkbox" id="filter-quarantine"> 仅看待隔离分区</label>
+        </div>
+      </div>
+      <p class="case-meta" id="case-meta"></p>
+    </div>
+
+    <div class="card">
+      <h2>分区暴露结果 <small>最早暴露时间 · 最短事件链</small></h2>
+      <div class="table-wrap">
+        <table class="disease-table">
+          <thead>
+            <tr>
+              <th>分区</th><th>状态</th><th>最早暴露时间</th><th>具备传染性时间</th>
+              <th>最短事件链</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="zone-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🛑 待隔离清单 <small id="quarantine-sub"></small></h2>
+      <ul class="quarantine-list" id="quarantine-list"></ul>
+    </div>
+
+    <div class="card">
+      <h2>事件时间线 <small id="timeline-sub"></small></h2>
+      <div id="replay-trace" class="replay-trace"></div>
+      <div class="table-wrap">
+        <table class="disease-table event-table">
+          <thead>
+            <tr>
+              <th>时间</th><th>类型</th><th>工具</th><th>分区</th><th>合格</th>
+              <th>备注</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="event-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/disease.js"></script>
+</body>
+</html>

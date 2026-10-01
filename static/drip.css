@@ -1,0 +1,125 @@
+/* 滴灌均匀度巡检页样式（复用 style.css / water.css / heat.css 的变量与组件） */
+
+.drip-filters { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 10px; flex-wrap: wrap; }
+.drip-filters label { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 90px; }
+.drip-filters input, .drip-filters select { font: inherit; padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; }
+.drip-filters .btn { white-space: nowrap; }
+
+/* ---------- 轮次列表 ---------- */
+.round-item { cursor: pointer; flex-direction: column; align-items: stretch; gap: 3px; }
+.round-item .line1 { display: flex; align-items: center; gap: 6px; }
+.round-item .zone-chip {
+  font-size: 10.5px; color: var(--green-dark); background: #e6f4e6;
+  border: 1px solid #b8dabb; border-radius: 999px; padding: 0 7px; white-space: nowrap;
+}
+.round-item .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.verdict-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
+.verdict-dot.normal, .verdict-dot.ok { background: var(--green); }
+.verdict-dot.shared_pressure, .verdict-dot.pipe_loss, .verdict-dot.abnormal { background: var(--red); }
+.verdict-dot.pressure_low, .verdict-dot.insufficient { background: #f59e0b; }
+
+/* ---------- 分区参数配置 ---------- */
+.zcfg-head { margin: 4px 0 2px; font-size: 12px; font-weight: 600; color: var(--ink); }
+.zcfg-head small { display: block; font-weight: 400; color: var(--ink-soft); margin-top: 1px; }
+.zone-configs { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; padding-right: 2px; }
+.zcfg {
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fafcf9;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.zcfg .zcfg-title { font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.zcfg .zcfg-title .valve-tag { font-weight: 400; font-size: 10.5px; color: var(--ink-soft); }
+.zcfg-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.zcfg-grid label { font-size: 11px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 2px; }
+.zcfg-grid input { font: inherit; padding: 5px 6px; border: 1px solid var(--line); border-radius: 6px; width: 100%; }
+
+/* ---------- 样本录入 ---------- */
+.sample-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.sample-row label { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 3px; }
+.sample-row input, .sample-row select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; width: 100%; }
+
+/* ---------- 总览徽标 ---------- */
+.case-badge.ok, .case-badge.normal { background: #e6f4e6; color: var(--green-dark); border: 1px solid #b8dabb; }
+.case-badge.shared { background: var(--red-bg); color: var(--red); border: 1px solid #f0b5af; }
+.rule-box { margin-top: 10px; font-size: 12.5px; border-radius: 8px; padding: 9px 12px; }
+.rule-box.shared { background: var(--red-bg); border: 1px solid #f0b5af; color: var(--red); }
+.rule-box.normal { background: #eef3ec; border: 1px solid var(--line); color: var(--ink-soft); }
+.rule-box strong { font-size: 14px; }
+
+/* ---------- 维护清单 ---------- */
+.maintain-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.maintain-item {
+  border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px;
+  padding: 7px 10px; font-size: 12.5px; background: #fafcf9;
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.maintain-item.high { border-left-color: var(--red); }
+.maintain-item.medium { border-left-color: #f59e0b; }
+.maintain-item.low { border-left-color: #9bb09a; }
+.maintain-item .m-icon { font-size: 15px; line-height: 1.3; }
+.maintain-item .m-body { flex: 1; min-width: 0; }
+.maintain-item .m-action { font-weight: 600; }
+.maintain-item .m-basis { color: var(--ink-soft); font-size: 11.5px; margin-top: 1px; }
+.maintain-item .m-zone { color: var(--green-dark); font-size: 11px; white-space: nowrap; }
+.maintain-empty { color: var(--ink-soft); font-size: 12.5px; padding: 6px 2px; }
+
+/* ---------- 分区结果卡 ---------- */
+.zone-cards { display: flex; flex-direction: column; gap: 10px; }
+.zone-card { border: 1px solid var(--line); border-radius: 10px; background: #fcfefb; overflow: hidden; }
+.zone-card.shared { border-color: #f0b5af; background: #fff8f7; }
+.zone-card.pipe_loss { border-left: 4px solid var(--red); }
+.zone-card.abnormal { border-left: 4px solid var(--red); }
+.zone-card.pressure_low, .zone-card.insufficient { border-left: 4px solid #f59e0b; }
+.zone-card.ok { border-left: 4px solid var(--green); }
+.zc-head {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer;
+  flex-wrap: wrap;
+}
+.zc-head:hover { background: #f3f8f1; }
+.zc-name { font-size: 14px; font-weight: 700; }
+.zc-badge {
+  font-size: 11.5px; font-weight: 700; padding: 2px 10px; border-radius: 999px;
+  background: #eef3ec; color: var(--ink-soft); border: 1px solid var(--line);
+}
+.zc-badge.ok { background: #e6f4e6; color: var(--green-dark); border-color: #b8dabb; }
+.zc-badge.pipe_loss, .zc-badge.abnormal, .zc-badge.shared_hit {
+  background: var(--red-bg); color: var(--red); border-color: #f0b5af;
+}
+.zc-badge.pressure_low, .zc-badge.insufficient {
+  background: #fff4de; color: var(--amber); border-color: #f0d49a;
+}
+.zc-summary { margin-left: auto; font-size: 12px; color: var(--ink-soft); display: flex; gap: 12px; flex-wrap: wrap; }
+.zc-summary b { color: var(--ink); }
+.zc-summary .fail { color: var(--red); }
+.zc-caret { color: var(--ink-soft); font-size: 11px; }
+.zc-body { padding: 0 12px 10px; }
+.zc-body.collapsed { display: none; }
+.zc-metrics { display: flex; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; }
+.zc-metric {
+  border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px;
+  background: #fff; min-width: 104px; font-size: 11.5px; color: var(--ink-soft);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.zc-metric b { font-size: 14px; color: var(--ink); }
+.zc-metric b.fail { color: var(--red); }
+.zc-metric b.pass { color: var(--green-dark); }
+.zc-reasons { margin: 0; padding-left: 18px; font-size: 12px; color: var(--ink-soft); }
+.zc-reasons li { margin: 2px 0; }
+.zc-clogs { margin-top: 6px; font-size: 12px; }
+.zc-clogs .clog-chip {
+  display: inline-block; margin: 2px 4px 2px 0; padding: 1px 8px; border-radius: 999px;
+  background: var(--red-bg); color: var(--red); border: 1px solid #f0b5af; font-size: 11.5px;
+}
+.zc-params { margin-top: 6px; font-size: 11.5px; color: var(--ink-soft); }
+.zc-edit { margin-top: 8px; }
+.zc-edit summary { cursor: pointer; font-size: 12px; color: var(--green-dark); }
+.zc-edit .zcfg { margin-top: 6px; }
+.zc-edit .form-actions { margin-top: 6px; }
+
+/* ---------- 样本明细 ---------- */
+.sample-table-filters { margin-bottom: 10px; }
+.check-line { flex-direction: row !important; align-items: center; gap: 4px; font-size: 12px; color: var(--ink-soft); }
+.drip-table td.low-flow { color: var(--red); font-weight: 600; }
+.drip-table td.pos-head { color: var(--green-dark); }
+.drip-table td.pos-middle { color: #1565c0; }
+.drip-table td.pos-tail { color: var(--amber); }
+.drip-table tr.clog-row td { background: #fff8f7; }

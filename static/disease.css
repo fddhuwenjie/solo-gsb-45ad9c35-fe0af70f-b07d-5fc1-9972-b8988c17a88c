@@ -1,0 +1,120 @@
+/* 病害接触追踪页样式（复用 style.css / water.css 的变量与基础组件） */
+
+.disease-layout { grid-template-columns: 350px minmax(0, 1fr); }
+@media (max-width: 980px) {
+  .disease-layout { grid-template-columns: 1fr; }
+}
+
+/* ---------- 案件 ---------- */
+.case-item { cursor: pointer; flex-direction: column; align-items: stretch; gap: 3px; }
+.case-item .row1 { display: flex; align-items: center; gap: 8px; }
+.case-item .grow { flex: 1; min-width: 0; }
+.case-item .meta { display: flex; align-items: center; gap: 6px; }
+
+.case-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.case-badge.open   { background: #fff4de; color: var(--amber); border: 1px solid #f0d49a; }
+.case-badge.frozen { background: #e8eefc; color: #1a4fb0; border: 1px solid #b9caf0; }
+
+.case-ops { display: flex; gap: 8px; margin-top: 10px; }
+.case-ops .btn { flex: 1; text-align: center; }
+#case-form.locked, #event-form.locked, #event-card.locked .form-hint { opacity: .55; }
+#event-card.locked select, #event-card.locked input,
+#case-form.locked input,
+#case-form.locked button[type="submit"],
+#event-card.locked button[type="submit"] { pointer-events: none; }
+
+/* ---------- 工具 ---------- */
+.tool-form { grid-template-columns: 1fr 1fr auto; }
+.tool-item .retired-tag {
+  font-size: 10px; color: var(--ink-soft); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0 5px;
+}
+.tool-item.deleted-tool { opacity: .75; }
+.tool-item .deleted-tag {
+  font-size: 10px; color: var(--red); border: 1px solid #f0b5af;
+  border-radius: 4px; padding: 0 5px;
+}
+
+/* ---------- 顶部概况 ---------- */
+.disease-overview { padding: 12px 14px; }
+.overview-label { font-size: 15px; font-weight: 700; }
+.case-meta { margin: 8px 0 0; font-size: 12px; color: var(--ink-soft); display: flex; gap: 14px; flex-wrap: wrap; }
+.check-line { flex-direction: row !important; align-items: center; gap: 5px; white-space: nowrap; }
+
+/* ---------- 表格 ---------- */
+.disease-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.disease-table th, .disease-table td {
+  padding: 7px 9px; border-bottom: 1px solid var(--line); text-align: left;
+  vertical-align: top;
+}
+.disease-table th { color: var(--ink-soft); font-weight: 600; background: #f7faf6; white-space: nowrap; }
+.disease-table tr:hover td { background: #f5f9f3; }
+.disease-table tr.row-quarantine td { background: #fffaf2; }
+.disease-table tr.row-quarantine:hover td { background: #fff4e4; }
+
+.state-pill {
+  display: inline-block; padding: 1px 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; white-space: nowrap;
+}
+.state-pill.seed    { background: #fde8e6; color: #b01810; border: 1px solid #f0b5af; }
+.state-pill.exposed { background: #fff4de; color: var(--amber); border: 1px solid #f0d49a; }
+.state-pill.latent  { background: #fff7e8; color: #8a5a00; }
+.state-pill.mature  { background: #fde8e6; color: #b01810; }
+.state-pill.clean   { background: #eef3ec; color: var(--ink-soft); border: 1px solid var(--line); }
+
+.chain { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.chain .ev-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: 1px 7px; font-size: 11px; background: #fafcf9; white-space: nowrap;
+}
+.chain .ev-chip.diagnosis { background: #fde8e6; border-color: #f0b5af; color: #b01810; }
+.chain .ev-chip.visit { background: #e7f0fb; border-color: #b9cdf0; color: #1a4fb0; }
+.chain .ev-chip.disinfection.ok { background: #e6f4e6; border-color: #b8dabb; color: var(--green-dark); }
+.chain .arrow { color: var(--ink-soft); font-size: 10px; }
+
+/* ---------- 隔离清单 ---------- */
+.quarantine-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px;
+}
+.quarantine-list li {
+  border: 1px solid #f0d49a; background: #fffaf0; border-radius: 8px;
+  padding: 8px 11px; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px;
+}
+.quarantine-list li.seed { border-color: #f0b5af; background: #fff5f4; }
+.quarantine-list .q-head { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.quarantine-list .q-meta { color: var(--ink-soft); font-size: 11.5px; }
+.quarantine-list .empty, .replay-empty {
+  color: var(--ink-soft); font-size: 12.5px; padding: 6px 0;
+}
+
+/* ---------- 重放过程 ---------- */
+.replay-trace {
+  display: flex; flex-direction: column; gap: 3px; margin-bottom: 12px;
+  max-height: 260px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fcfefb;
+}
+.replay-line { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; }
+.replay-line .r-time { color: var(--ink-soft); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.replay-line .r-type { white-space: nowrap; font-weight: 600; min-width: 34px; }
+.replay-line .r-type.diagnosis { color: #b01810; }
+.replay-line .r-type.visit { color: #1a4fb0; }
+.replay-line .r-type.disinfection { color: var(--green-dark); }
+.replay-line .r-action { color: var(--ink); }
+.replay-line.silent .r-action { color: #9aa89b; }
+
+/* ---------- 事件表 ---------- */
+.event-table .yes { color: var(--green-dark); font-weight: 600; }
+.event-table .no  { color: var(--red); font-weight: 600; }
+.event-table .dash { color: var(--ink-soft); }
+.del-btn, .edit-btn {
+  border: none; background: none; cursor: pointer; color: var(--ink-soft);
+  font-size: 13px; padding: 2px 5px; border-radius: 4px;
+}
+.del-btn:hover { color: var(--red); background: var(--red-bg); }
+.edit-btn:hover { color: var(--green-dark); background: #e6f4e6; }
+.row-actions { white-space: nowrap; text-align: right; }

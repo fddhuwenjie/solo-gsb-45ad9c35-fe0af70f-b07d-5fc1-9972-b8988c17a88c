@@ -1,0 +1,12 @@
+services:
+  irrigation:
+    build: .
+    container_name: greenhouse-irrigation
+    ports:
+      - "8000:8000"
+    volumes:
+      - irrigation-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  irrigation-data:

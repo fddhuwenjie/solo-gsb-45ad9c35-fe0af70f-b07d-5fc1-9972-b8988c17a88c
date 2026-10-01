@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>温室分区轮灌编排台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">💧</span>
+    <div>
+      <h1>温室分区轮灌编排台</h1>
+      <p class="subtitle">15 分钟粒度 · 总流量 / 阀门并发 / 停水时段约束</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <nav class="page-tabs">
+      <a class="btn primary" href="/">💧 轮灌编排台</a>
+      <a class="btn" href="/water">🧪 水质监测</a>
+      <a class="btn" href="/disease">🔬 病害追踪</a>
+      <a class="btn" href="/heat">🌡️ 积温预测</a>
+      <a class="btn" href="/drip">💧 滴灌巡检</a>
+      <a class="btn" href="/fertilizer">⚗️ 母液分罐</a>
+    </nav>
+    <label class="date-box">计划日期
+      <input type="date" id="plan-date">
+    </label>
+    <label class="date-box">总流量上限
+      <span class="flow-input"><input type="number" id="total-flow" min="1" step="1"> L/min</span>
+    </label>
+    <button class="btn primary" id="btn-generate">⚙ 自动编排</button>
+    <button class="btn" id="btn-save">💾 保存计划</button>
+    <a class="btn" href="/api/export" id="btn-export">⬇ 导出 JSON</a>
+    <button class="btn warn" id="btn-sample">↺ 恢复示例</button>
+    <button class="btn danger" id="btn-clear">🗑 清空重置</button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- 左侧：数据录入 -->
+  <aside class="sidebar">
+    <section class="card">
+      <h2>阀门 <small>并发上限</small></h2>
+      <ul class="entity-list" id="valve-list"></ul>
+      <form class="inline-form" id="valve-form">
+        <input type="text" name="name" placeholder="阀门名称" required>
+        <input type="number" name="flow_lmin" placeholder="L/min" min="1" step="0.1" required>
+        <input type="number" name="concur" placeholder="并发" min="1" step="1" value="1" required>
+        <button class="btn small" type="submit">添加</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>分区 <small>水量 / 所属阀门 / 允许时段</small></h2>
+      <ul class="entity-list" id="zone-list"></ul>
+      <form class="zone-form" id="zone-form">
+        <input type="hidden" name="id">
+        <input type="text" name="name" placeholder="分区名称（如：番茄区）" required>
+        <label>所需水量 (L)
+          <input type="number" name="water_l" min="0" step="1" required>
+        </label>
+        <label>所属阀门
+          <select name="valve_id" required></select>
+        </label>
+        <div class="time-row">
+          <label>最早
+            <input type="time" name="earliest" step="900" required>
+          </label>
+          <label>最晚
+            <input type="time" name="latest" step="900" required>
+          </label>
+        </div>
+        <label class="hidden" id="item-start-label">计划开始时间（留空表示取消编排）
+          <input type="time" name="item_start" step="900">
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit" id="zone-submit">添加分区</button>
+          <button class="btn small hidden" type="button" id="zone-cancel">取消编辑</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>停水时段</h2>
+      <ul class="entity-list" id="blackout-list"></ul>
+      <form class="inline-form" id="blackout-form">
+        <input type="text" name="name" placeholder="停水说明（可空）">
+        <input type="time" name="start" step="900" required>
+        <input type="time" name="end" step="900" required>
+        <button class="btn small" type="submit">添加</button>
+      </form>
+    </section>
+  </aside>
+
+  <!-- 右侧：时间轴 -->
+  <section class="main-panel">
+    <div class="draft-banner hidden" id="draft-banner">
+      <span class="draft-text">📝 本地草稿：该计划基于修订 <b id="draft-base-rev"></b>，
+        服务器已到修订 <b id="draft-server-rev"></b>。页面保留你的改动，请逐项复核差异后再提交。</span>
+      <span class="draft-actions">
+        <button class="btn small primary" id="btn-review-merge" type="button">🧾 逐项复核并提交</button>
+        <button class="btn small ghost" id="btn-discard-draft" type="button">放弃草稿</button>
+      </span>
+    </div>
+    <div class="status-bar" id="status-bar">
+      <span id="status-text">加载中…</span>
+      <span class="status-meta" id="status-meta"></span>
+    </div>
+    <div class="issues-panel hidden" id="issues-panel">
+      <h3>⚠ 冲突与未编排分区</h3>
+      <ul id="issues-list"></ul>
+    </div>
+    <div class="timeline-wrap">
+      <div class="timeline" id="timeline">
+        <div class="ruler-row">
+          <div class="ruler-track" id="ruler-track"></div>
+        </div>
+        <div id="tracks"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <span><i class="swatch valve-0"></i>阀门 1</span>
+      <span><i class="swatch valve-1"></i>阀门 2</span>
+      <span><i class="swatch valve-2"></i>阀门 3</span>
+      <span><i class="swatch valve-other"></i>其他阀门</span>
+      <span><i class="swatch conflict"></i>冲突时段</span>
+      <span><i class="swatch blackout"></i>停水</span>
+      <span class="hint">💡 拖动色块调整灌溉时段；点击色块在左侧表单中精确修改（修改分区表单即更新时段并即时校验）。</span>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- 修订冲突：逐项复核差异 -->
+<div class="modal-overlay hidden" id="merge-overlay">
+  <div class="modal" id="merge-modal" role="dialog" aria-modal="true" aria-labelledby="merge-title">
+    <div class="modal-head">
+      <h2 id="merge-title">🧾 修订冲突复核</h2>
+      <button class="icon-btn" id="merge-close" type="button" title="关闭（草稿保留）">✕</button>
+    </div>
+    <p class="merge-intro">
+      你的窗口基于修订 <b id="merge-base-rev"></b> 编辑，另一窗口已先提交到修订
+      <b id="merge-server-rev"></b>。下方按分区列出差异，请逐项选择后再提交；
+      提交仍会再次校验修订，期间若又有新版本会继续拒绝且不产生部分更新。
+    </p>
+    <div class="constraint-warn hidden" id="constraint-warn">
+      <strong>⚠ 约束已变更：</strong><span id="constraint-warn-text"></span>
+      旧约束下的草稿时段可能已不合法，提交后请按校验结果再核对。
+    </div>
+    <div class="merge-table-wrap">
+      <table class="merge-table" id="merge-table">
+        <thead>
+          <tr>
+            <th>分区</th>
+            <th class="col-choice" colspan="3">选择保留</th>
+          </tr>
+          <tr class="subhead">
+            <th></th>
+            <th>仅本地 / 本地版本</th>
+            <th>仅服务器 / 服务器版本</th>
+            <th>处理</th>
+          </tr>
+        </thead>
+        <tbody id="merge-rows"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <span class="merge-hint" id="merge-hint"></span>
+      <span class="grow"></span>
+      <button class="btn small ghost" id="merge-cancel" type="button">保留草稿，稍后处理</button>
+      <button class="btn small primary" id="merge-submit" type="button">基于最新修订提交所选</button>
+    </div>
+  </div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>

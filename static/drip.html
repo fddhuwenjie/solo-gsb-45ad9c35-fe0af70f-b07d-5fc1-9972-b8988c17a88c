@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滴灌均匀度巡检</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/water.css">
+<link rel="stylesheet" href="/heat.css">
+<link rel="stylesheet" href="/drip.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">💧</span>
+    <div>
+      <h1>滴灌均匀度巡检</h1>
+      <p class="subtitle">低四分位均值 DU · 共享供压异常 / 支管压损 / 疑似滴头堵塞判定 · 补录删除后整轮重算</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <nav class="page-tabs">
+      <a class="btn" href="/">💧 轮灌编排台</a>
+      <a class="btn" href="/water">🧪 水质监测</a>
+      <a class="btn" href="/disease">🔬 病害追踪</a>
+      <a class="btn" href="/heat">🌡️ 积温预测</a>
+      <a class="btn primary" href="/drip">💧 滴灌巡检</a>
+      <a class="btn" href="/fertilizer">⚗️ 母液分罐</a>
+    </nav>
+    <button class="btn" id="btn-export">⬇ 导出 JSON</button>
+  </div>
+</header>
+
+<main class="water-layout heat-layout">
+  <!-- 左侧：巡检轮次 + 新建 + 录样 -->
+  <aside class="sidebar">
+    <section class="card">
+      <h2>巡检轮次 <small>复用阀门与分区</small></h2>
+      <div class="drip-filters">
+        <label>阀门筛选
+          <select id="filter-valve"></select>
+        </label>
+        <label>巡检日期
+          <input type="date" id="filter-date">
+        </label>
+        <button class="btn small ghost" type="button" id="btn-filter-clear">清除筛选</button>
+      </div>
+      <ul class="entity-list" id="round-list"></ul>
+      <form class="zone-form" id="round-form">
+        <input type="hidden" name="id">
+        <label>巡检名称
+          <input type="text" name="name" placeholder="如：秋茬滴灌首轮巡检" required>
+        </label>
+        <label>巡检阀门（一次巡检一条阀门）
+          <select name="valve_id" id="round-valve" required></select>
+        </label>
+        <label>巡检时间（本地时间）
+          <input type="datetime-local" name="inspected" step="1" required>
+        </label>
+        <label>备注（可空）
+          <input type="text" name="note" placeholder="如：泵房加压后复测">
+        </label>
+
+        <div class="zcfg-head">
+          <span>该阀门下分区参数</span>
+          <small>基准入口压力 MPa · 设计滴头流量 L/h · DU 下限 · 尾首降幅 · 低流量比例</small>
+        </div>
+        <div id="zone-configs" class="zone-configs"></div>
+
+        <div class="form-actions">
+          <button class="btn small primary" type="submit" id="round-submit">新建巡检</button>
+          <button class="btn small hidden" type="button" id="round-cancel">取消编辑</button>
+        </div>
+        <p class="form-hint">保存后可继续为各分区补录滴头样本；每区至少 8 个样本才计算 DU。</p>
+      </form>
+      <div class="case-ops">
+        <button class="btn small danger-solid" id="btn-round-delete" disabled>删除巡检轮次</button>
+      </div>
+    </section>
+
+    <section class="card" id="sample-card">
+      <h2>滴头样本录入 <small>按首 / 中 / 尾编号</small></h2>
+      <form class="zone-form" id="sample-form">
+        <label>分区
+          <select name="drip_zone_id" id="sample-zone" required></select>
+        </label>
+        <div class="sample-row">
+          <label>管段位置
+            <select name="position" id="sample-position" required>
+              <option value="head">首段</option>
+              <option value="middle">中段</option>
+              <option value="tail">尾段</option>
+            </select>
+          </label>
+          <label>滴头编号
+            <input type="text" name="label" placeholder="如 H01" required>
+          </label>
+          <label>实测流量 <small>L/h</small>
+            <input type="number" name="flow" min="0" step="0.01" required>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">提交样本</button>
+        </div>
+      </form>
+      <p class="form-hint">同分区同管段编号唯一；支持补录，提交 / 删除后整轮全部重算。</p>
+    </section>
+  </aside>
+
+  <!-- 右侧：总览 + 维护清单 + 分区结果 + 样本明细 -->
+  <section class="main-panel">
+    <div class="card heat-overview">
+      <div class="overview-head">
+        <div class="overall">
+          <span class="overall-label" id="drip-title">未选择巡检轮次</span>
+          <span class="case-badge" id="drip-badge"></span>
+        </div>
+        <div class="filters">
+          <label>快速选轮次
+            <select id="filter-round"></select>
+          </label>
+        </div>
+      </div>
+      <p class="case-meta" id="drip-meta"></p>
+      <ul class="heat-stat-row" id="drip-stats"></ul>
+      <div class="forecast-box" id="rule-box"></div>
+    </div>
+
+    <div class="card" id="maintain-card">
+      <h2>🛠 维护清单 <small id="maintain-subtitle"></small></h2>
+      <ul class="maintain-list" id="maintain-list"></ul>
+    </div>
+
+    <div class="card">
+      <h2>分区判定结果 <small>每区 DU、压力、尾首降幅与判定依据</small></h2>
+      <div id="zone-cards" class="zone-cards"></div>
+    </div>
+
+    <div class="card">
+      <h2>滴头样本明细 <small id="sample-subtitle"></small></h2>
+      <div class="filters sample-table-filters">
+        <label>分区
+          <select id="detail-zone"></select>
+        </label>
+        <label>管段
+          <select id="detail-pos">
+            <option value="">全部</option>
+            <option value="head">首段</option>
+            <option value="middle">中段</option>
+            <option value="tail">尾段</option>
+          </select>
+        </label>
+        <label class="check-line">
+          <input type="checkbox" id="detail-low-only"> 只看低流量点
+        </label>
+      </div>
+      <div class="table-wrap">
+        <table class="sample-table drip-table">
+          <thead>
+            <tr><th>分区</th><th>管段</th><th>滴头编号</th><th>实测流量（L/h）</th>
+            <th>设计流量</th><th>堵塞阈值</th><th></th></tr>
+          </thead>
+          <tbody id="sample-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/drip.js"></script>
+</body>
+</html>

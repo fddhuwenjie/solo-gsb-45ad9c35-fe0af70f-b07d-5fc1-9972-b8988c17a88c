@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>作物积温预测</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/water.css">
+<link rel="stylesheet" href="/heat.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🌡️</span>
+    <div>
+      <h1>作物积温预测</h1>
+      <p class="subtitle">温度截断到基温 / 上限之间 · 相邻读数梯形积分 · 按午夜拆分 · 间隔超限只登记缺口</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <nav class="page-tabs">
+      <a class="btn" href="/">💧 轮灌编排台</a>
+      <a class="btn" href="/water">🧪 水质监测</a>
+      <a class="btn" href="/disease">🔬 病害追踪</a>
+      <a class="btn primary" href="/heat">🌡️ 积温预测</a>
+      <a class="btn" href="/drip">💧 滴灌巡检</a>
+      <a class="btn" href="/fertilizer">⚗️ 母液分罐</a>
+    </nav>
+    <button class="btn" id="btn-export">⬇ 导出 JSON</button>
+  </div>
+</header>
+
+<main class="water-layout heat-layout">
+  <!-- 左侧：批次 + 参数 + 读数录入 -->
+  <aside class="sidebar">
+    <section class="card">
+      <h2>种植批次 <small>复用温室分区</small></h2>
+      <ul class="entity-list" id="batch-list"></ul>
+      <form class="zone-form" id="batch-form">
+        <input type="hidden" name="id">
+        <label>批次名称
+          <input type="text" name="name" placeholder="如：越冬番茄一批" required>
+        </label>
+        <label>作物（可空）
+          <input type="text" name="crop" placeholder="如：番茄 / 黄瓜">
+        </label>
+        <label>所属分区
+          <select name="zone_id" id="batch-zone" required></select>
+        </label>
+        <div class="param-grid">
+          <label>基温 Tb <small>℃</small>
+            <input type="number" name="base_temp" step="0.1" value="10" required>
+          </label>
+          <label>上限 Tc <small>℃</small>
+            <input type="number" name="cap_temp" step="0.1" value="30" required>
+          </label>
+          <label>目标积温 <small>℃·日</small>
+            <input type="number" name="target_gdd" min="0.0001" step="1" value="150" required>
+          </label>
+          <label>允许采样间隔 <small>小时</small>
+            <input type="number" name="max_gap_hours" min="0.05" step="0.5" value="6" required>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit" id="batch-submit">新建批次</button>
+          <button class="btn small hidden" type="button" id="batch-cancel">取消编辑</button>
+        </div>
+        <p class="form-hint">保存参数后对该批次全部读数按时间整体重算。</p>
+      </form>
+      <div class="case-ops">
+        <button class="btn small danger-solid" id="btn-batch-delete" disabled>删除批次</button>
+      </div>
+    </section>
+
+    <section class="card" id="reading-card">
+      <h2>温度读数 <small>支持补录历史时间戳</small></h2>
+      <form class="zone-form" id="reading-form">
+        <label>读数时间（本地时间）
+          <input type="datetime-local" name="ts" step="1" required>
+        </label>
+        <label>温度 <small>℃（录入真实温度，计算时自动截断到基温 / 上限之间）</small>
+          <input type="number" name="temp" step="0.1" min="-50" max="80" required>
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">提交读数</button>
+          <button class="btn small ghost" type="button" id="btn-reading-now">填入当前时间</button>
+        </div>
+      </form>
+      <p class="form-hint">同一批次时间戳唯一；补录或删除后按时间全量重算。</p>
+    </section>
+  </aside>
+
+  <!-- 右侧：总览 + 曲线 + 日台账 -->
+  <section class="main-panel">
+    <div class="card heat-overview">
+      <div class="overview-head">
+        <div class="overall">
+          <span class="overall-label" id="heat-title">未选择批次</span>
+          <span class="case-badge" id="heat-badge"></span>
+        </div>
+        <div class="filters">
+          <label>分区筛选
+            <select id="filter-zone"></select>
+          </label>
+          <label>批次
+            <select id="filter-batch"></select>
+          </label>
+        </div>
+      </div>
+      <p class="case-meta" id="heat-meta"></p>
+      <ul class="heat-stat-row" id="heat-stats"></ul>
+      <div class="forecast-box" id="forecast-box"></div>
+    </div>
+
+    <div class="card">
+      <h2>温度 / 积温曲线 <small id="chart-subtitle"></small></h2>
+      <div id="heat-charts" class="heat-charts"></div>
+    </div>
+
+    <div class="card hidden" id="gap-card">
+      <h2>⏭ 缺口清单 <small>间隔超过允许采样间隔，缺口区间不累计积温</small></h2>
+      <div class="table-wrap">
+        <table class="sample-table">
+          <thead>
+            <tr><th>#</th><th>缺口起</th><th>缺口止</th><th>间隔（小时）</th><th>允许间隔（小时）</th></tr>
+          </thead>
+          <tbody id="gap-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>每日积温台账 <small id="ledger-subtitle"></small></h2>
+      <div class="table-wrap">
+        <table class="sample-table heat-table">
+          <thead>
+            <tr>
+              <th>日期</th><th>当日积温（℃·日）</th><th>累计积温（℃·日）</th>
+              <th>覆盖时长（h）</th><th>缺口时长（h）</th><th>完整日</th>
+            </tr>
+          </thead>
+          <tbody id="daily-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>读数明细 <small id="reading-subtitle"></small></h2>
+      <div class="table-wrap">
+        <table class="sample-table heat-table">
+          <thead>
+            <tr><th>时间</th><th>实测温度（℃）</th><th>截断后有效温度（℃）</th><th></th></tr>
+          </thead>
+          <tbody id="reading-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/heat.js"></script>
+</body>
+</html>

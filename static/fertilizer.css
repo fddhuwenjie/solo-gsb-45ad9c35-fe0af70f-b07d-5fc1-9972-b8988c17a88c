@@ -1,0 +1,137 @@
+/* 肥料母液分罐页样式（复用 style.css / water.css / heat.css / drip.css 的变量与组件） */
+
+/* ---------- 容量双输入 / 不相容选择行 ---------- */
+.cap-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cap-row label { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 3px; }
+.cap-row input { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; width: 100%; }
+
+.pair-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; }
+.pair-row label { font-size: 12px; color: var(--ink-soft); display: flex; flex-direction: column; gap: 3px; }
+.pair-row select { font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; width: 100%; }
+.pair-row .pair-x { color: var(--red); font-weight: 700; padding-top: 18px; }
+
+/* ---------- 配方列表 ---------- */
+.recipe-item { cursor: pointer; flex-direction: column; align-items: stretch; gap: 3px; }
+.recipe-item .line1 { display: flex; align-items: center; gap: 6px; }
+.recipe-item .zone-chip {
+  font-size: 10.5px; color: var(--green-dark); background: #e6f4e6;
+  border: 1px solid #b8dabb; border-radius: 999px; padding: 0 7px; white-space: nowrap;
+}
+.recipe-item .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
+.status-dot.ok { background: var(--green); }
+.status-dot.overflow { background: #f59e0b; }
+.status-dot.conflict, .status-dot.error { background: var(--red); }
+.status-dot.empty { background: #9bb09a; }
+
+/* ---------- 总览徽标 ---------- */
+.case-badge.ok { background: #e6f4e6; color: var(--green-dark); border: 1px solid #b8dabb; }
+.case-badge.overflow { background: #fff4de; color: var(--amber); border: 1px solid #f0d49a; }
+.case-badge.conflict, .case-badge.error { background: var(--red-bg); color: var(--red); border: 1px solid #f0b5af; }
+.case-badge.empty { background: #eef3ec; color: var(--ink-soft); border: 1px solid var(--line); }
+
+/* ---------- 冲突链 ---------- */
+.conflict-chain {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 13.5px; padding: 8px 2px;
+}
+.conflict-chain .ring-node {
+  border: 1px solid #f0b5af; background: var(--red-bg); color: var(--red);
+  border-radius: 999px; padding: 4px 12px; font-weight: 600;
+}
+.conflict-chain .ring-edge { color: var(--red); font-weight: 700; }
+.conflict-chain .ring-note { color: var(--ink-soft); font-size: 11.5px; margin-left: 6px; }
+
+/* ---------- 分罐清单 ---------- */
+.tank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 820px) { .tank-grid { grid-template-columns: 1fr; } }
+.tank-col { border: 1px solid var(--line); border-radius: 10px; background: #fcfefb; overflow: hidden; }
+.tank-col.tank-a { border-top: 4px solid #1565c0; }
+.tank-col.tank-b { border-top: 4px solid #6a1b9a; }
+.tank-col.over { border-color: #f0b5af; background: #fff8f7; }
+.tank-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; font-weight: 700;
+}
+.tank-col.tank-a .tank-name { color: #1565c0; }
+.tank-col.tank-b .tank-name { color: #6a1b9a; }
+.tank-cap { font-size: 11.5px; color: var(--ink-soft); font-weight: 400; }
+.tank-bar { height: 8px; background: #eef2ec; margin: 0 12px; border-radius: 999px; overflow: hidden; }
+.tank-fill { height: 100%; width: 0; border-radius: 999px; transition: width .25s; }
+.tank-col.tank-a .tank-fill { background: #1565c0; }
+.tank-col.tank-b .tank-fill { background: #6a1b9a; }
+.tank-col.over .tank-fill { background: var(--red); }
+.tank-items { list-style: none; margin: 10px 12px; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.tank-items li {
+  display: flex; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px;
+  background: #fff; font-size: 12.5px;
+}
+.tank-items li .f-comp { font-size: 10.5px; color: var(--ink-soft); }
+.tank-items .tank-empty { color: var(--ink-soft); justify-content: center; border-style: dashed; }
+.tank-foot { padding: 8px 12px 10px; font-size: 12px; color: var(--ink-soft); border-top: 1px solid var(--line); }
+.tank-foot b { color: var(--ink); font-size: 13px; }
+.tank-foot .over-amt { color: var(--red); font-weight: 700; }
+
+.combo-box { margin: 10px 2px 0; font-size: 11.5px; color: var(--ink-soft); }
+details.combo-details summary { cursor: pointer; color: var(--green-dark); font-size: 12px; }
+.combo-table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 6px; }
+.combo-table th, .combo-table td { padding: 4px 7px; border-bottom: 1px solid var(--line); text-align: left; }
+.combo-table th { background: #f7faf6; color: var(--ink-soft); font-weight: 600; }
+.combo-table tr.chosen td { background: #eef7e9; font-weight: 600; }
+.combo-table tr.bad td { color: var(--red); }
+
+/* ---------- 连通分量 ---------- */
+.component-list { display: flex; flex-direction: column; gap: 8px; }
+.comp-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fafcf9; }
+.comp-card.conflict { border-color: #f0b5af; background: #fff8f7; }
+.comp-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin-bottom: 6px; }
+.comp-tag {
+  font-size: 10.5px; border-radius: 999px; padding: 1px 8px;
+  background: #eef3ec; color: var(--ink-soft); border: 1px solid var(--line);
+}
+.comp-tag.conflict { background: var(--red-bg); color: var(--red); border-color: #f0b5af; }
+.comp-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.comp-side { border: 1px dashed var(--line); border-radius: 7px; padding: 6px 8px; font-size: 11.5px; }
+.comp-side.s0 { border-color: #9fc3e8; }
+.comp-side.s1 { border-color: #c6a8dd; }
+.comp-side .side-label { color: var(--ink-soft); display: block; margin-bottom: 3px; }
+.comp-chip {
+  display: inline-block; margin: 2px 4px 2px 0; padding: 1px 8px; border-radius: 999px;
+  background: #fff; border: 1px solid var(--line);
+}
+.comp-side.s0 .comp-chip { border-color: #9fc3e8; color: #0d47a1; }
+.comp-side.s1 .comp-chip { border-color: #c6a8dd; color: #4a148c; }
+.comp-sum { margin-top: 4px; color: var(--ink-soft); font-size: 11px; }
+
+/* ---------- 明细表 ---------- */
+.fert-table td.zero { color: var(--ink-soft); }
+.fert-table .tank-A { color: #1565c0; font-weight: 700; }
+.fert-table .tank-B { color: #6a1b9a; font-weight: 700; }
+.fert-table .tank-—, .fert-table .tank-none { color: var(--ink-soft); }
+.fert-table .ring-row td { background: #fff8f7; }
+.fert-table .ring-mark { color: var(--red); font-weight: 700; }
+.edit-amt {
+  font: inherit; font-size: 12px; width: 86px; padding: 3px 6px;
+  border: 1px solid var(--line); border-radius: 5px;
+}
+.del-btn {
+  border: none; background: none; cursor: pointer; color: var(--ink-soft);
+  font-size: 13px; padding: 2px 5px; border-radius: 4px;
+}
+.del-btn:hover { color: var(--red); background: var(--red-bg); }
+
+/* ---------- 不相容关系 chips ---------- */
+.pair-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.pair-list li {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 10px;
+  background: #fafcf9; font-size: 12px;
+}
+.pair-list li.in-ring { border-color: #f0b5af; background: var(--red-bg); color: var(--red); }
+.pair-list .pair-del {
+  border: none; background: #eef3ec; cursor: pointer; border-radius: 999px;
+  width: 20px; height: 20px; line-height: 1; color: var(--ink-soft); font-size: 11px;
+}
+.pair-list .pair-del:hover { background: var(--red-bg); color: var(--red); }
+.pair-empty { color: var(--ink-soft); font-size: 12.5px; }
