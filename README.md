@@ -1,6 +1,6 @@
 # 温室分区轮灌编排台
 
-基于 **Python Flask + SQLite + 原生 HTML/CSS/JavaScript** 的温室管理工具，包含六个页面：
+基于 **Python Flask + SQLite + 原生 HTML/CSS/JavaScript** 的温室管理工具，包含七个页面：
 
 1. **温室分区轮灌编排台**（`/`）：以 **15 分钟为最小粒度**，在总流量、阀门并发上限、允许灌溉时段和停水时段四类约束下自动生成一天的轮灌计划，并在时间轴上直观标出冲突原因；支持鼠标拖拽与表单两种方式微调单个时段，即时校验，可保存到数据库并导出 JSON。计划保存采用**防覆盖修订（乐观并发）**：页面加载时取得修订号，自动编排 / 拖动 / 表单保存均携带该基线，服务端仅在基线仍为当前修订时原子写入并递增；两个窗口基于同一版本编辑时先提交者成功、后提交者收到 409 且不产生部分更新，页面保留本地草稿并按分区列出**仅本地 / 仅服务器 / 双方都改**的差异，逐项选择后再基于最新修订提交；阀门流量、分区约束、停水时段或总流量变更同样使旧基线失效。
 2. **灌溉水质连续监测**（`/water`）：按水源连续录入带时间戳的 **pH / EC / 浊度 / 硝酸盐** 采样，为每个水源配置各指标正常区间，按「连续两次越界判超标、连续两次回归判恢复」的规则重算状态，支持按水源/日期筛选、最近采样趋势图与 JSON 导出；**每个阀门可绑定一个水源**，并按计划日期提供「**用水回溯**」——把现有 15 分钟灌溉时段与水源半开状态区间求交，采样时刻起采用新状态、当日首条采样前沿用最近历史状态（无历史样本标证据不足），超标 / 观察区间分别计为风险 / 待复核水量，列出分区、触发指标与状态来源采样，支持分区筛选与 JSON 导出。
@@ -8,6 +8,7 @@
 4. **作物积温预测**（`/heat`）：复用现有温室分区，为种植批次设置**基温、上限温度、目标积温与允许采样间隔**，录入带时间戳的温度；温度截断后对相邻读数做**梯形积分并按午夜拆分**，间隔超限**只登记缺口、不累计**；补录 / 删除读数后按时间全量重算，给出**每日积温、累计值、首次达标时刻与缺口清单**，未达标时以最近 7 个无缺口完整日的日均积温外推预计日期（样本不足明确不可预测）；页面展示温度 / 累计积温曲线与每日台账，支持按分区、批次筛选及 JSON 导出。
 5. **滴灌均匀度巡检**（`/drip`）：复用现有阀门与分区，一次巡检选择**一条阀门**并为其下各分区配置**基准入口压力、设计滴头流量、DU 下限、尾首降幅阈值与低流量比例**，录入入口压力及**按首 / 中 / 尾编号**的滴头实测流量；每区至少 8 个样本，按流量升序取 `ceil(n/4)` 个计算**低四分位均值 DU**；超过半数分区同时「入口压力低于基准 + DU 合格」时整轮标记**共享供压异常**，未触发时按规则判**支管压损**与**疑似滴头堵塞**；补录 / 删除样本后整轮重算，输出每区 DU、判定依据与维护清单，支持历史筛选与 JSON 导出。
 6. **肥料母液分罐**（`/fertilizer`）：复用现有温室分区，每份配方选择分区并设置 **A/B 罐容量（mL，正整数）**，录入**肥料名称、所需母液量（mL，非负整数；用量为 0 不参与求解）**及**两两不相容关系**；先按不相容图拆分**连通分量并二着色**，再在各分量的两种翻转方向中枚举全局组合，以**满足双罐容量、两罐体积差最小**为目标、同分按 **A 罐肥料 ID 升序序列**决胜；出现**奇环**时返回**最短冲突环**，容量无解时给出**所有组合中的最小总超额及对应分罐结果**（不只显示“无法分配”）；编辑用量 / 关系 / 容量后立即重算，页面展示分罐清单、占用量与冲突链，支持保存及导出 JSON。
+7. **执行核验**（`/verify`）：按**计划日期**建立核验批次，导入按时间递增的**阀门实际运行事件**（唯一 `event_id`、阀门、开始 / 结束时间、实际流量；**同编号同内容重复提交幂等，同编号内容冲突整批拒绝**；运行允许中断、允许并发），系统按**左闭右开半开区间**把事件与当前轮灌计划逐段对齐：同一阀门的事件按与计划项的交集唯一归属分区，无法唯一归属（同时压多个计划项）的子段标为**证据不足、列出候选分区且不重复计量**；按实际流量核算各分区**已灌 / 缺水 / 超灌、提前 / 延后、中断、越界（计划外）水量**，逐分钟标出实际运行中的**阀门并发超限与总流量超限**；对缺水分区生成**不改原计划**的补灌建议，只使用**剩余允许时段**与停水、流量、并发约束（同时对原计划占用与实际运行占用做约束检查），无解时给出**最小缺口与原因**；补录 / 删除事件后**全量重算**，批次保存到 SQLite 并可导出 JSON。
 
 ## 一键启动（Docker Compose）
 
@@ -23,8 +24,9 @@ docker compose up --build -d
 - 积温预测页：**http://localhost:8000/heat**
 - 滴灌巡检页：**http://localhost:8000/drip**
 - 母液分罐页：**http://localhost:8000/fertilizer**
+- 执行核验页：**http://localhost:8000/verify**
 
-六个页面顶部有页签可互相跳转。数据通过 Docker 卷 `irrigation-data` 持久化（容器内 `/app/data/irrigation.db`）。停止与清理：
+七个页面顶部有页签可互相跳转。数据通过 Docker 卷 `irrigation-data` 持久化（容器内 `/app/data/irrigation.db`）。停止与清理：
 
 ```bash
 docker compose down          # 停止（数据保留）
@@ -38,10 +40,10 @@ docker compose down -v       # 停止并删除数据卷
 ```bash
 pip install -r requirements.txt
 python app.py
-# 访问 http://localhost:8000/ 、/water 、/disease 、/heat 、/drip 、/fertilizer
+# 访问 http://localhost:8000/ 、/water 、/disease 、/heat 、/drip 、/fertilizer 、/verify
 ```
 
-首次启动会自动建库并写入一套内置示例数据（轮灌示例 + 2 个水源的水质历史采样 + 1 个灰霉病病害追踪示例案件 + 2 个作物积温批次 + 2 轮滴灌均匀度巡检 + 1 份肥料母液分罐配方）。其中示例阀门已绑定示例水源并内置一份当日轮灌计划，打开 `/water` 的「用水回溯」即可直接看到风险 / 待复核 / 证据不足三类分区。
+首次启动会自动建库并写入一套内置示例数据（轮灌示例 + 2 个水源的水质历史采样 + 1 个灰霉病病害追踪示例案件 + 2 个作物积温批次 + 2 轮滴灌均匀度巡检 + 1 份肥料母液分罐配方 + 1 个执行核验示例批次）。其中示例阀门已绑定示例水源并内置一份当日轮灌计划，打开 `/water` 的「用水回溯」即可直接看到风险 / 待复核 / 证据不足三类分区，打开 `/verify` 可直接看到提前 / 中断缺水 / 计划外 / 阀门并发 / 总流量冲突五类核验结论与补灌建议。
 
 ## 功能说明
 
@@ -842,6 +844,184 @@ print("删边后恢复可分配：A", sorted(A), "B", sorted(B))
 
 页面侧复核：打开 `/fertilizer` 选中「奇环回归配方」，顶部红色徽标「不相容冲突（奇环）」，冲突链为 `F1 ✕ F2 ✕ F3 ✕ F4 ✕ F5 ✕ F1（闭环）`；下方关系 chips 中只有环上 5 条关系红色高亮，`F3 ✕ F6 ✕ F7 ✕ F4` 三条捷径边不高亮；冲突期间分罐清单不指定罐位。删除环上任意一条关系后立即变回绿色「可分配」。可分配与容量超额两类结果的判定与展示保持不变。
 
+## 执行核验（/verify）
+
+灌完之后，把泵房 / 电磁阀日志按计划日期导入，系统把**实际运行**与**原计划**逐段对齐，回答四个问题：每个分区实际灌了多少、缺不缺水；实际运行有没有提前 / 延后 / 中断 / 越界；阀门并发与总流量有没有被突破；缺水的分区在**不改原计划**的前提下还能在哪些剩余时段补灌、补多少。
+
+### 数据模型（SQLite，沿用现有数据卷）
+
+- **核验批次（verify_batches）**：名称 + **计划日期（YYYY-MM-DD）** + 备注 + 创建时的计划修订号快照（核验始终按当前计划实时重算；计划后来被改过，页面顶部黄色提示「保存时修订 X，当前已到 Y」）。
+- **运行事件（verify_events）**：`(batch_id, event_id)` 唯一；字段为 **event_id（业务唯一编号）、阀门、开始时间、结束时间、实际流量（L/min）**。时间为**本地时间、精确到分钟**，必须落在计划日期当天（结束允许次日 00:00 / 24:00）；删除批次级联删除其事件；被事件引用的阀门禁止删除（400，先删事件 / 批次）。
+
+### 导入规则
+
+- 批量接口 `POST /api/verify/batches/{id}/events`，请求体 `{"events":[...]}`（也兼容 `{"batch":[...]}`）。
+- 事件必须**按开始时间递增**排列（允许同一开始时刻的并发事件，此时按 event_id 排序）；事件之间允许重叠、允许中断。
+- **幂等**：同 `event_id` 且阀门 / 开始 / 结束 / 实际流量完全一致 -> 跳过，可安全重放整份日志；
+- **冲突整批拒绝**：同 `event_id` 任一内容不同 -> 整个批次 400，不写入任何一条（先校验、后在单事务内插入）；
+- 阀门不存在、结束不晚于开始、跨日期、带时区 / 秒精度、非数字流量同样整批 400 并指出第几条。
+
+### 对齐与计量（左闭右开）
+
+- 事件 `[start,end)` 与同阀门计划项 `[槽起,槽止)` 一律按**左闭右开**处理：恰好在计划开始时刻结束的事件不占该计划，恰好在计划结束时刻开始的事件不重叠。
+- 对每个事件取其阀门当日全部计划项，在所有计划项端点处把事件切成连续子段：
+  - 恰好压 **1 个**计划项 -> 归属该分区；
+  - 一个都不压 -> **计划外运行（越界）**；
+  - 同时压 **≥2 个**计划项 -> **证据不足**，列出候选分区，水量只登记、**不计入任何分区的已灌 / 缺水，绝不重复计量**。
+- 计划外子段再判断与同阀门计划项是否**端点相接**：紧邻计划之前 = 该分区**提前运行**，紧邻之后 = **延后运行**（计入提前 / 延后分钟，水量仍记计划外）；夹在两个计划项之间标「两计划之间」，其余标「与计划不相邻」。
+- 分区已灌水量按归属子段逐分钟求**并集**：重叠分钟取并集事件实际流量的最大值（并发 / 重复事件不重复计）；缺水 = max(0, 需水 − 已灌)，超灌 = max(0, 已灌 − 需水)；计划区间未被归属事件覆盖的分钟为**中断**分钟。
+- **实际运行冲突**按分钟扫描全部事件区间：同分钟同阀门开启事件数 > 阀门并发上限 -> 阀门并发超限；同分钟全部事件实际流量之和 > 总流量上限 -> 总流量超限；相邻且同类型同事件集合的冲突自动合并展示。
+
+### 补灌建议（不改原计划）
+
+只对**已编排、阀门有效、仍缺水**的分区生成；候选槽 = 分区允许窗口内的 15 分钟槽 − 原计划槽 − 停水槽。按时间从早到晚贪心选取，每个候选槽同时满足：
+
+1. 本分区按阀门**额定流量**加入后，叠加**原计划**占用总流量不超限、本阀门并发不超限；
+2. 叠加**实际运行**占用同样不超限（建议不与已发生的运行打架）。
+
+选中槽合并为连续建议时段。可行时给出具体起止时段与补入水量；**选不满时明确给出最小缺口**（仍缺多少 L、剩余允许窗口里还有多少可用槽），并把不可用槽按原因分组列出（停水时段 / 总流量超限（叠加原计划占用）/ 阀门并发超限（叠加实际运行占用）等）。
+
+### 页面 / 导出
+
+- 左侧：日期筛选 + 批次列表 + 新建批次（名称 / 计划日期 / 备注）、单条事件表单与**批量 JSON 导入**；右侧：总览徽标与统计（已灌 / 缺水 / 超灌 / 计划外 / 证据不足 / 冲突 / 剩余缺口）、实际运行冲突表、缺水分区补灌建议卡、分区核验台账（计划 / 实际时段、提前延后中断、各类水量）、证据不足与越界子段明细、事件台账（可逐条删除）。
+- **补录 / 删除事件后全量重算**（计算模块无状态、结果不缓存）；批次保存于 SQLite，**⬇ 导出 JSON** 含批次元数据（保存时 / 当前计划修订）、全部子段归属、冲突、补灌建议与事件明细，文件名形如 `execution-verify-1-2026-10-01.json`。
+
+### 操作示例（API）
+
+```bash
+# 0) 恢复示例（自动生成 1 个「示例核验批次」，覆盖全部五类结论）
+curl -s -X POST http://localhost:8000/api/reset -H 'Content-Type: application/json' \
+  -d '{"sample":true}' > /dev/null
+curl -s http://localhost:8000/api/verify/state | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+print("批次:", [(b["id"], b["name"], b["event_count"]) for b in d["batches"]])
+r = d["selected"]["result"]
+for z in r["zones"]:
+    print(f"  {z[\"zone_name\"]}: {r[\"status_labels\"][z[\"status\"]]}"
+          f" 已灌 {z[\"delivered_l\"]} 缺水 {z[\"deficit_l\"]}"
+          f" 提前 {z[\"early_min\"]} 中断 {z[\"interrupt_min\"]} 计划外 {z[\"out_of_plan_l\"]}")
+print("冲突:", [(c["type"], c.get("valve_name"), c["start"], c["end"]) for c in r["conflicts"]])
+print("补灌:", [(m["zone_name"], m["feasible"], [(b["start"], b["end"]) for b in m["blocks"]])
+                for m in r["makeup"]])
+'
+
+# 1) 手工新建一个当日批次
+D=$(curl -s http://localhost:8000/api/state | python3 -c 'import sys,json;print(json.load(sys.stdin)["settings"]["plan_date"])')
+BID=$(curl -s -X POST http://localhost:8000/api/verify/batches \
+  -H 'Content-Type: application/json' \
+  -d "{\"name\":\"班后复核\",\"plan_date\":\"$D\"}" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["selected_id"])')
+
+# 2) 按时间递增导入阀门事件（时间精确到分钟；同阀并发允许）
+curl -s -X POST "http://localhost:8000/api/verify/batches/$BID/events" \
+  -H 'Content-Type: application/json' -d '{
+    "events": [
+      {"event_id":"LOG-01","valve_id":1,"start":"'"$D"'T08:00","end":"'"$D"'T09:50","flow_lmin":25},
+      {"event_id":"LOG-02","valve_id":1,"start":"'"$D"'T09:50","end":"'"$D"'T10:00","flow_lmin":25}
+    ]}' | python3 -c 'import sys,json;d=json.load(sys.stdin);print("新增",d["imported"],"跳过",d["skipped"])'
+
+# 3) 幂等：整份日志原样重放 -> imported=0, skipped=2，结果不变
+#    冲突：把 LOG-01 的流量改成 99 再提交 -> 400，库内事件一条都不变
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "http://localhost:8000/api/verify/batches/$BID/events" \
+  -H 'Content-Type: application/json' \
+  -d '{"events":[{"event_id":"LOG-01","valve_id":1,"start":"'"$D"'T08:00","end":"'"$D"'T09:50","flow_lmin":99}]}'
+
+# 4) 乱序 / 跨日期 / 秒精度 / 结束早于开始均整批 400
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "http://localhost:8000/api/verify/batches/$BID/events" \
+  -H 'Content-Type: application/json' \
+  -d '{"events":[{"event_id":"X2","valve_id":1,"start":"'"$D"'T10:00","end":"'"$D"'T10:30","flow_lmin":25},
+                 {"event_id":"X1","valve_id":1,"start":"'"$D"'T09:00","end":"'"$D"'T09:30","flow_lmin":25}]}'
+
+# 5) 删除单条事件 -> 全量重算；导出 JSON
+EID=$(curl -s "http://localhost:8000/api/verify/state?batch_id=$BID" \
+  | python3 -c 'import sys,json;print(next(e["id"] for e in json.load(sys.stdin)["selected"]["result"]["events"] if e["event_id"]=="LOG-02"))')
+curl -s -X DELETE "http://localhost:8000/api/verify/events/$EID" > /dev/null
+curl -s -OJ "http://localhost:8000/api/verify/export?batch_id=$BID" && ls execution-verify-*.json
+```
+
+### 复核示例（内置示例批次）
+
+沿用 Docker Compose（`docker compose up --build -d`）。内置示例计划（贪心结果）为：草莓区 05:30–06:30（中部干管 25）、番茄区 08:00–10:00（北侧干管 25）、叶菜区 08:00–08:30、育苗区 08:00–08:45（苗床支管 10）、黄瓜区 18:00–19:30（中部干管 25）；停水 07:30–08:00，总流量上限 60 L/min。示例批次 7 条事件：
+
+```bash
+curl -s http://localhost:8000/api/verify/state | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["selected"]["result"]
+
+# 草莓 SV-STRAWBERRY-01 04:00–06:30：04:00–05:30 提前越界 2250 L，
+# 计划内 05:30–06:30 足额 1500 L；台账 early_min=90
+z = next(z for z in d["zones"] if z["zone_name"]=="草莓区")
+assert z["delivered_l"] == 1500 and z["early_min"] == 90 and z["out_of_plan_l"] == 2250
+print("草莓：提前 90 min，计划外", z["out_of_plan_l"], "L")
+
+# 番茄 SV-TOMATO-01 08:00–09:50：中断 10 min，已灌 2750 / 缺水 250 L
+z = next(z for z in d["zones"] if z["zone_name"]=="番茄区")
+assert z["interrupt_min"] == 10 and z["deficit_l"] == 250
+print("番茄：中断 10 min，缺水", z["deficit_l"], "L")
+
+# 黄瓜 SV-CUCUMBER-01 17:50–19:30：17:50–18:00 计划外 250 L，提前 10 min
+z = next(z for z in d["zones"] if z["zone_name"]=="黄瓜区")
+assert z["early_min"] == 10 and z["out_of_plan_l"] == 250 and z["deficit_l"] == 0
+
+# 冲突：08:10–08:16 总流量 100 > 60（番茄 25 + 叶菜 25 + 演示 40 + 育苗 10），
+# 08:16–08:20 为 75 > 60（叶菜事件已停）；另含两条阀门并发超限
+types = sorted({c["type"] for c in d["conflicts"]})
+assert types == ["total_flow", "valve_concur"]
+for c in d["conflicts"]:
+    print("冲突:", c["type"], c.get("valve_name") or "全系统", c["start"], c["end"], c["event_ids"])
+
+# 叶菜 08:00–08:16 运行（其中 08:10–08:16 与 40 L/min 演示事件并发，
+# 并集按 40 计）：已灌 650 L，缺水 100 L；计划 30 min 中实际覆盖 20 min，
+# 中断 10 min；补 1 槽即可，建议 08:45–09:00
+z = next(z for z in d["zones"] if z["zone_name"]=="叶菜区")
+assert z["deficit_l"] == 100 and z["interrupt_min"] == 10
+assert z["delivered_l"] == 650
+l = next(m for m in d["makeup"] if m["zone_name"]=="叶菜区")
+assert l["feasible"] and l["blocks"][0]["start"] == "08:45"
+
+# 补灌建议不改原计划：番茄 250 L -> 06:00–06:15（额定 25 L/min × 15 min）
+t = next(m for m in d["makeup"] if m["zone_name"]=="番茄区")
+assert t["feasible"] and t["blocks"][0]["start"] == "06:00" and t["remaining_l"] == 0
+print("番茄补灌建议：", [(b["start"], b["end"]) for b in t["blocks"]])
+print("全部建议：", [(m["zone_name"], m["feasible"], m["remaining_l"]) for m in d["makeup"]])
+'
+```
+
+**无解最小缺口**复核（在上面的环境继续）：把番茄区允许窗口收窄到恰好等于其计划窗口并制造缺水，补灌建议返回 `feasible=false`、`free_slot_count=0` 与明确原因：
+
+```bash
+# 1) 番茄区允许时段改为 08:00–10:00（与计划完全相同，无剩余槽）
+read TID VID < <(curl -s http://localhost:8000/api/state | python3 -c '
+import sys, json
+z = next(z for z in json.load(sys.stdin)["zones"] if z["name"]=="番茄区")
+print(z["id"], z["valve_id"])')
+curl -s -X PUT "http://localhost:8000/api/zones/$TID" -H 'Content-Type: application/json' \
+  -d "{\"name\":\"番茄区\",\"water_l\":3000,\"valve_id\":$VID,\"earliest\":\"08:00\",\"latest\":\"10:00\"}" > /dev/null
+# 2) 核验重算：番茄缺水 250 L 但剩余允许时段为 0 -> 最小缺口 = 250 L + 原因
+curl -s http://localhost:8000/api/verify/state | python3 -c '
+import sys, json
+m = next(m for m in json.load(sys.stdin)["selected"]["result"]["makeup"] if m["zone_name"]=="番茄区")
+print("可行:", m["feasible"], "| 最小缺口:", m["remaining_l"], "L |", m["reason"])
+assert not m["feasible"] and m["remaining_l"] == 250 and m["free_slot_count"] == 0
+'
+# 3) 恢复示例
+curl -s -X POST http://localhost:8000/api/reset -H 'Content-Type: application/json' -d '{"sample":true}' > /dev/null
+```
+
+页面侧复核：打开 `/verify`，默认选中「示例核验批次」，顶部徽标为「存在待处理问题」；右侧依次可见总流量 / 阀门并发冲突表（红色时段 + 涉及 event_id）、番茄 / 叶菜补灌建议卡（绿色建议时段芯片 + 剩余允许窗口）、分区台账（番茄缺 250、草莓提前 90 / 计划外 2250、黄瓜提前 10）、越界子段明细（草莓 04:00–05:30 标「提前运行」）与事件台账；在左侧删掉 `SV-DEMO-FLOW` 后冲突与叶菜计量立即全量重算；再原样提交该事件返回「幂等跳过」，把流量改为别的值则红色报错且整批不落库。
+
+后端回归（无需容器，纯模块级；Flask 接口在容器 / 装好 Flask 的环境运行）：
+
+```bash
+python3 -m unittest test_execution_check -v
+# 覆盖：时间/日期/时区校验、批内递增、幂等跳过、内容冲突整批拒绝、
+#       唯一归属 / 提前延后 / 中间间隔 / 证据不足不重复计量、并集水量不重复计、
+#       阀门并发与总流量冲突及区间合并、补灌可行 / 停水避让 / 计划并发占用 / 无解最小缺口
+```
+
+数据库迁移说明：新增 `verify_batches` / `verify_events` 两张表由建库脚本 `CREATE TABLE IF NOT EXISTS` 幂等创建；旧库首次启动经 `PRAGMA user_version=4` 迁移（表结构自动补齐、`plan_revision` 等既有数据不动），无需新增服务或数据卷，继续使用 SQLite 与现有 Docker Compose。
+
 ## 内置示例
 
 
@@ -905,17 +1085,26 @@ print("删边后恢复可分配：A", sorted(A), "B", sorted(B))
 | PUT/DELETE | `/api/fertilizer/items/{id}` | 修改肥料名称 / 用量（改用量立即重算）或删除（自动清理其不相容关系） |
 | POST | `/api/fertilizer/recipes/{id}/pairs` | 登记两种肥料的两两不相容关系（无向、不可重复、不可自指） |
 | DELETE | `/api/fertilizer/pairs/{id}` | 删除一条不相容关系并立即重算 |
+| GET | `/verify` | 执行核验页面 |
+| GET | `/api/verify/state` | 核验批次 / 阀门及选中批次全量重算结果；参数 `batch_id`、`date`（计划日期筛选） |
+| GET | `/api/verify/export?batch_id=` | 导出单个核验批次 JSON（批次元数据 + 对齐明细 + 冲突 + 补灌建议 + 事件明细） |
+| POST | `/api/verify/batches` | 新建核验批次（名称 + 计划日期 YYYY-MM-DD + 备注，记录当时计划修订号） |
+| DELETE | `/api/verify/batches/{id}` | 删除批次及其全部事件 |
+| POST | `/api/verify/batches/{id}/events` | 按时间递增导入运行事件（`{"events":[...]}` 或 `{"batch":[...]}`）；同编号同内容幂等、内容冲突 / 乱序 / 非法整批 400 |
+| DELETE | `/api/verify/events/{id}` | 删除单条运行事件并全量重算 |
 
 ## 项目结构
 
 ```
-├── app.py              # Flask 路由 + SQLite 持久化（轮灌 + 水质 + 病害 + 积温 + 滴灌 + 母液分罐）
+├── app.py              # Flask 路由 + SQLite 持久化（轮灌 + 水质 + 病害 + 积温 + 滴灌 + 母液分罐 + 执行核验）
 ├── scheduler.py        # 轮灌编排与校验引擎（15 分钟槽）
+├── execution_check.py  # 执行核验：半开区间切分归属 / 证据不足不重复计量 / 并发·总流量冲突扫描 / 剩余窗口补灌建议 / 幂等导入校验
 ├── water_quality.py    # 水质指标校验与「连续两次」状态机
 ├── disease_trace.py    # 病害接触追踪：确诊/到访/消毒按时间重放引擎
 ├── crop_heat.py        # 作物积温：温度截断 / 梯形积分 / 午夜拆分 / 缺口登记 / 7 完整日外推
 ├── drip_uniform.py     # 滴灌巡检：低四分位 DU / 共享供压异常 / 支管压损 / 滴头堵塞判定
 ├── fertilizer_split.py # 母液分罐：不相容图连通分量二着色 / 奇偶状态 BFS 最短奇环 / 全局翻转组合寻优 / 最小超额方案
+├── test_execution_check.py # 执行核验回归（半开切分归属 / 证据不足不重复计量 / 冲突扫描 / 补灌最小缺口 / 幂等与整批拒绝）
 ├── test_fertilizer_split.py # 母液分罐回归测试（偶环捷径漏报、更长奇环、同长环规范化决胜、ok/overflow/empty/error）
 ├── test_schedule_revision.py # 轮灌计划防覆盖修订回归（CAS 先提交者胜出、409 无部分更新、合并期间再变、约束变更失效基线、旧客户端兼容）
 ├── requirements.txt
@@ -935,5 +1124,7 @@ print("删边后恢复可分配：A", sorted(A), "B", sorted(B))
     ├── drip.js         # 轮次 / 参数 / 首中尾样本录入 / 判定卡 / 维护清单 / 筛选 / 导出
     ├── fertilizer.html # 母液分罐页面结构
     ├── fertilizer.js   # 配方 / 肥料用量 / 不相容关系登记 / 冲突链 / 分罐清单 / 组合枚举 / 导出
-    └── style.css       # 时间轴等样式（water.css、disease.css、heat.css、drip.css、fertilizer.css 为对应页面补充样式）
+    ├── verify.html      # 执行核验页面结构
+    ├── verify.js        # 批次 / 事件单条与批量导入 / 冲突 / 补灌 / 台账 / 子段明细 / 删除重算 / 导出
+    └── style.css       # 时间轴等样式（water.css、disease.css、heat.css、drip.css、fertilizer.css、verify.css 为对应页面补充样式）
 ```

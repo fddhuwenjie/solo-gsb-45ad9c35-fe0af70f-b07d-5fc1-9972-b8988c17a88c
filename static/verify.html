@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>执行核验</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/water.css">
+<link rel="stylesheet" href="/heat.css">
+<link rel="stylesheet" href="/disease.css">
+<link rel="stylesheet" href="/verify.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">✅</span>
+    <div>
+      <h1>执行核验</h1>
+      <p class="subtitle">按计划日期导入阀门实际运行事件 · 半开区间逐段对齐 · 缺水补灌建议 · 不改原计划</p>
+    </div>
+  </div>
+  <div class="top-actions">
+    <nav class="page-tabs">
+      <a class="btn" href="/">💧 轮灌编排台</a>
+      <a class="btn" href="/water">🧪 水质监测</a>
+      <a class="btn" href="/disease">🔬 病害追踪</a>
+      <a class="btn" href="/heat">🌡️ 积温预测</a>
+      <a class="btn" href="/drip">💧 滴灌巡检</a>
+      <a class="btn" href="/fertilizer">⚗️ 母液分罐</a>
+      <a class="btn primary" href="/verify">✅ 执行核验</a>
+    </nav>
+    <button class="btn" id="btn-export" disabled>⬇ 导出 JSON</button>
+  </div>
+</header>
+
+<main class="water-layout verify-layout">
+  <!-- 左侧：批次 + 事件导入 -->
+  <aside class="sidebar">
+    <section class="card">
+      <h2>核验批次 <small>按计划日期</small></h2>
+      <div class="filters">
+        <label>日期筛选
+          <input type="date" id="filter-date">
+        </label>
+      </div>
+      <ul class="entity-list" id="batch-list"></ul>
+      <form class="zone-form" id="batch-form">
+        <label>批次名称
+          <input type="text" name="name" placeholder="如：10-01 班后核验" required>
+        </label>
+        <label>计划日期
+          <input type="date" name="plan_date" required>
+        </label>
+        <label>备注（可空）
+          <input type="text" name="note" placeholder="记录人 / 天气 / 异常说明">
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">新建批次</button>
+        </div>
+      </form>
+      <div class="case-ops">
+        <button class="btn small danger-solid" id="btn-batch-delete" disabled>删除批次</button>
+      </div>
+    </section>
+
+    <section class="card" id="import-card">
+      <h2>导入运行事件 <small>按时间递增 · 可中断 / 并发</small></h2>
+      <form class="zone-form" id="event-form">
+        <label>event_id（唯一编号）
+          <input type="text" name="event_id" placeholder="如：SV-TOMATO-01" required>
+        </label>
+        <label>阀门
+          <select name="valve_id" required></select>
+        </label>
+        <div class="time-row">
+          <label>开始
+            <input type="datetime-local" name="start" step="60" required>
+          </label>
+          <label>结束
+            <input type="datetime-local" name="end" step="60" required>
+          </label>
+        </div>
+        <label>实际流量 <small>L/min</small>
+          <input type="number" name="flow_lmin" min="0" step="0.1" required>
+        </label>
+        <div class="form-actions">
+          <button class="btn small primary" type="submit">导入事件</button>
+        </div>
+      </form>
+      <p class="form-hint">
+        同编号同内容重复提交幂等跳过；同编号但阀门 / 起止 / 流量不同则<strong>整批拒绝</strong>。
+        多条事件可用 JSON 批量导入：
+      </p>
+      <details>
+        <summary class="batch-toggle">📋 批量 JSON 导入</summary>
+        <textarea id="batch-json" rows="7" spellcheck="false"
+          placeholder='[{"event_id":"SV-01","valve_id":1,"start":"2026-10-01T08:00","end":"2026-10-01T10:00","flow_lmin":25}]'></textarea>
+        <div class="form-actions">
+          <button class="btn small primary" type="button" id="btn-batch-import">导入整批</button>
+        </div>
+      </details>
+    </section>
+  </aside>
+
+  <!-- 右侧：核验结果 -->
+  <section class="main-panel">
+    <div class="card verify-overview">
+      <div class="overview-head">
+        <div class="overall">
+          <span class="overall-label" id="verify-title">未选择批次</span>
+          <span class="case-badge" id="verify-badge"></span>
+        </div>
+      </div>
+      <p class="case-meta" id="verify-meta"></p>
+      <div class="revision-warn hidden" id="revision-warn"></div>
+      <ul class="heat-stat-row" id="verify-stats"></ul>
+    </div>
+
+    <div class="card hidden" id="conflict-card">
+      <h2>🚨 实际运行冲突 <small>阀门并发 / 总流量</small></h2>
+      <div class="table-wrap">
+        <table class="sample-table">
+          <thead>
+            <tr><th>类型</th><th>对象</th><th>开始</th><th>结束</th><th>时长(min)</th><th>实测 / 上限</th><th>事件</th></tr>
+          </thead>
+          <tbody id="conflict-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card hidden" id="makeup-card">
+      <h2>💧 缺水分区补灌建议 <small>仅使用剩余允许时段 · 不改原计划</small></h2>
+      <div id="makeup-list" class="makeup-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>分区核验台账 <small>已灌 / 缺水 / 提前延后 / 中断 / 越界</small></h2>
+      <div class="table-wrap">
+        <table class="sample-table verify-table">
+          <thead>
+            <tr>
+              <th>分区</th><th>阀门</th><th>结论</th>
+              <th>计划时段</th><th>实际时段</th>
+              <th>需水(L)</th><th>已灌(L)</th><th>缺水(L)</th><th>超灌(L)</th>
+              <th>提前(min)</th><th>延后(min)</th><th>中断(min)</th><th>计划外(L)</th>
+            </tr>
+          </thead>
+          <tbody id="zone-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card hidden" id="segment-card">
+      <h2>🧩 对齐明细 <small>证据不足不重复计量 · 计划外越界段</small></h2>
+      <div id="ambiguous-box"></div>
+      <div id="out-box"></div>
+    </div>
+
+    <div class="card hidden" id="event-card">
+      <h2>事件台账 <small>补录 / 删除后全量重算</small></h2>
+      <div class="table-wrap">
+        <table class="sample-table">
+          <thead>
+            <tr><th>event_id</th><th>阀门</th><th>开始</th><th>结束</th><th>时长(min)</th><th>流量(L/min)</th><th>归属</th><th></th></tr>
+          </thead>
+          <tbody id="event-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+<script src="/verify.js"></script>
+</body>
+</html>
